@@ -14,6 +14,8 @@ const PROVIDERS = [
     models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'] },
   { id: 'openrouter', name: 'OpenRouter', note: 'Model :free · 50 request/hari', url: 'https://openrouter.ai/keys',
     models: ['openrouter/free', 'nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free'] },
+  { id: '9router', name: '9Router', note: 'AI Routing Proxy (port 20128)', url: 'http://localhost:20128',
+    models: [] },
   { id: 'custom', name: 'Custom / Lokal', note: 'OpenAI-compatible (Ollama, LM Studio)', url: '', models: ['llama3.1', 'qwen2.5:7b'] },
 ];
 const LANGS = [['auto', 'Deteksi otomatis'], ['id', 'Indonesia'], ['en', 'English'], ['ms', 'Melayu'], ['jv', 'Jawa'], ['su', 'Sunda'], ['es', 'Español'], ['pt', 'Português'], ['ja', '日本語'], ['ko', '한국어'], ['th', 'ไทย'], ['vi', 'Tiếng Việt'], ['hi', 'Hindi'], ['ar', 'Arabic']];
@@ -53,6 +55,7 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
     setLoadingModels(true);
     try {
       if (s.llmProvider === 'custom') await save({ customBaseUrl: s.customBaseUrl });
+      if (s.llmProvider === '9router') await save({ nineRouterBaseUrl: s.nineRouterBaseUrl });
       const list = await call('llm:models', override);
       setModels((m) => ({ ...m, [s.llmProvider]: list.map((x) => x.id) }));
       toast(`${list.length} model ditemukan`, 'success');
@@ -60,7 +63,12 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
   };
   const test = async () => {
     setTesting(true);
-    try { if (s.llmProvider === 'custom') await save({ customBaseUrl: s.customBaseUrl }); const r = await call('llm:test', override); toast(`✓ ${r.provider} OK (${r.model}, ${r.ms} ms)`, 'success'); }
+    try {
+      if (s.llmProvider === 'custom') await save({ customBaseUrl: s.customBaseUrl });
+      if (s.llmProvider === '9router') await save({ nineRouterBaseUrl: s.nineRouterBaseUrl });
+      const r = await call('llm:test', override);
+      toast(`✓ ${r.provider} OK (${r.model || 'respon diterima'}, ${r.ms} ms)`, 'success');
+    }
     catch (e) { toast(e.message, 'error'); } finally { setTesting(false); }
   };
   const doSave = async () => { try { await save(s); await call('theme:set', s.theme || 'system'); toast('Pengaturan tersimpan', 'success'); onClose(); } catch (e) { toast(e.message, 'error'); } };
@@ -92,17 +100,22 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
                 ))}
               </div>
             </Field>
+            {s.llmProvider === '9router' && (
+              <Field label="Base URL 9Router" hint="Default: http://localhost:20128/v1 · Pastikan 9Router sedang berjalan">
+                <input className="input font-mono text-[12.5px]" value={s.nineRouterBaseUrl || 'http://localhost:20128/v1'} onChange={(e) => set({ nineRouterBaseUrl: e.target.value })} />
+              </Field>
+            )}
             {s.llmProvider === 'custom' && (
               <Field label="Base URL" hint="Contoh: http://localhost:11434/v1 (Ollama) · http://localhost:1234/v1 (LM Studio)">
                 <input className="input font-mono text-[12.5px]" value={s.customBaseUrl} onChange={(e) => set({ customBaseUrl: e.target.value })} />
               </Field>
             )}
-            <Field label={`API key ${prov.name}`} right={prov.url && <button className="text-[12px] text-accent-300 hover:underline inline-flex items-center gap-1" onClick={() => call('shell:external', prov.url)}>Ambil key <ExternalLink size={11} /></button>}
-              hint="Disimpan terenkripsi (Windows DPAPI), hanya dikirim ke provider terkait.">
+            <Field label={`API key ${prov.name}`} right={prov.url && <button className="text-[12px] text-accent-300 hover:underline inline-flex items-center gap-1" onClick={() => call('shell:external', prov.url)}>{s.llmProvider === '9router' ? 'Buka Web UI' : 'Ambil key'} <ExternalLink size={11} /></button>}
+              hint={s.llmProvider === '9router' ? 'Opsional jika 9Router lokal tidak memakai authentication/password.' : 'Disimpan terenkripsi (Windows DPAPI), hanya dikirim ke provider terkait.'}>
               <KeyInput value={s.keys[s.llmProvider]} onChange={(v) => setKey(s.llmProvider, v)} placeholder={s.llmProvider === 'groq' ? 'gsk_…' : s.llmProvider === 'gemini' ? 'AIza…' : s.llmProvider === 'openrouter' ? 'sk-or-…' : '(opsional)'} />
             </Field>
             <Field label="Model" right={<button className="text-[12px] text-accent-300 hover:underline inline-flex items-center gap-1" onClick={fetchModels} disabled={loadingModels}>{loadingModels ? <Spinner size={11} /> : <RefreshCw size={11} />}Ambil daftar model</button>}
-              hint={s.llmProvider === 'groq' ? 'Rekomendasi: openai/gpt-oss-120b atau llama-3.3-70b-versatile. Video panjang dipecah per bagian agar tidak kena limit.' : s.llmProvider === 'openrouter' ? 'Hanya model gratis (:free) yang ditampilkan saat ambil daftar.' : ''}>
+              hint={s.llmProvider === 'groq' ? 'Rekomendasi: openai/gpt-oss-120b atau llama-3.3-70b-versatile. Video panjang dipecah per bagian agar tidak kena limit.' : s.llmProvider === '9router' ? 'Klik "Ambil daftar model" untuk memuat daftar model yang aktif atau combo di 9Router.' : s.llmProvider === 'openrouter' ? 'Hanya model gratis (:free) yang ditampilkan saat ambil daftar.' : ''}>
               <div className="flex gap-2">
                 <select className="input" value={s.models[s.llmProvider]} onChange={(e) => setModel(s.llmProvider, e.target.value)}>
                   {modelList.map((m) => <option key={m} value={m}>{m}</option>)}

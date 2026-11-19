@@ -8,13 +8,15 @@ try { safeStorage = require('electron').safeStorage; } catch (_) {}
 const DEFAULT_SETTINGS = {
   workspaceDir: '',
   theme: 'system', // system | light | dark
-  llmProvider: 'groq', // groq | gemini | openrouter | custom
+  llmProvider: 'groq', // groq | gemini | openrouter | 9router | custom
   models: {
     groq: 'openai/gpt-oss-120b',
     gemini: 'gemini-2.5-flash',
     openrouter: 'openrouter/free',
+    '9router': '',
     custom: 'llama3.1',
   },
+  nineRouterBaseUrl: 'http://localhost:20128/v1',
   customBaseUrl: 'http://localhost:11434/v1',
   transcriber: 'groq', // groq | youtube
   whisperModel: 'whisper-large-v3-turbo',
@@ -49,7 +51,7 @@ const DEFAULT_SETTINGS = {
   },
 };
 
-const KEY_NAMES = ['groq', 'gemini', 'openrouter', 'custom'];
+const KEY_NAMES = ['groq', 'gemini', 'openrouter', '9router', 'custom'];
 
 function settingsPath() { return path.join(userDataDir(), 'settings.json'); }
 

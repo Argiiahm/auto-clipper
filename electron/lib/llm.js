@@ -4,14 +4,17 @@ const { transcriptToText, fmt } = require('./transcribe');
 const PROVIDERS = {
   groq: { name: 'Groq', base: 'https://api.groq.com/openai/v1', chunkTokens: 4200, jsonMode: true, keyUrl: 'https://console.groq.com/keys' },
   gemini: { name: 'Google Gemini', base: 'https://generativelanguage.googleapis.com/v1beta/openai', chunkTokens: 90000, jsonMode: true, keyUrl: 'https://aistudio.google.com/apikey' },
-  openrouter: { name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', chunkTokens: 24000, jsonMode: false, keyUrl: 'https://openrouter.ai/keys' },
-  custom: { name: 'Custom (OpenAI-compatible)', base: '', chunkTokens: 6000, jsonMode: false, keyUrl: '' },
+  openrouter: { name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', chunkTokens: 16000, jsonMode: true, keyUrl: 'https://openrouter.ai/keys' },
+  '9router': { name: '9Router', base: 'http://localhost:20128/v1', chunkTokens: 8000, jsonMode: true, keyUrl: 'http://localhost:20128' },
+  custom: { name: 'Custom (OpenAI-compatible)', base: '', chunkTokens: 8000, jsonMode: true, keyUrl: '' },
 };
 
 function providerConf(settings, override) {
   const id = (override && override.provider) || settings.llmProvider || 'groq';
   const p = PROVIDERS[id] || PROVIDERS.groq;
-  const base = id === 'custom' ? String(settings.customBaseUrl || '').replace(/\/+$/, '') : p.base;
+  let base = p.base;
+  if (id === 'custom') base = String(settings.customBaseUrl || '').replace(/\/+$/, '');
+  if (id === '9router') base = String(settings.nineRouterBaseUrl || p.base || 'http://localhost:20128/v1').replace(/\/+$/, '');
   const key = (override && override.key !== undefined ? override.key : (settings.keys || {})[id]) || '';
   const model = (override && override.model) || (settings.models || {})[id] || '';
   return { id, ...p, base, key, model };
@@ -26,7 +29,7 @@ function headers(conf) {
 
 async function chat(conf, messages, { json = true, maxTokens = 2500, temperature = 0.4, onWait, signal } = {}) {
   if (!conf.base) throw new Error('Base URL LLM belum diisi (Settings).');
-  if (!conf.key && conf.id !== 'custom') throw new Error(`API key ${conf.name} belum diisi. Buka Settings.`);
+  if (!conf.key && conf.id !== 'custom' && conf.id !== '9router') throw new Error(`API key ${conf.name} belum diisi. Buka Settings.`);
   if (!conf.model) throw new Error('Model LLM belum dipilih (Settings).');
   const body = { model: conf.model, messages, temperature, max_tokens: maxTokens };
   if (/gpt-oss/i.test(conf.model) && conf.id === 'groq') { body.reasoning_effort = 'low'; delete body.temperature; }
@@ -36,28 +39,100 @@ async function chat(conf, messages, { json = true, maxTokens = 2500, temperature
   if (json && conf.jsonMode) {
     try { res = await tryOnce({ ...body, response_format: { type: 'json_object' } }); }
     catch (e) {
-      if (/response_format|json_object|json mode|json_validate_failed|Failed to generate JSON/i.test(e.message)) res = await tryOnce(body);
-      else throw e;
+      if (/response_format|json_object|json mode|json_validate_failed|Failed to generate JSON|unsupported|not supported|400|422/i.test(e.message)) {
+        res = await tryOnce(body);
+      } else throw e;
     }
   } else res = await tryOnce(body);
-  const msg = res && res.choices && res.choices[0] && res.choices[0].message;
+  const choice = res && res.choices && res.choices[0];
+  const msg = choice && choice.message;
   let content = msg ? (msg.content || '') : '';
   if (Array.isArray(content)) content = content.map((c) => c.text || '').join('');
-  if (!content && msg && msg.reasoning) content = msg.reasoning;
+  const reasoning = msg ? (msg.reasoning_content || msg.reasoning || msg.thought || '') : '';
+  if (!content.trim() && reasoning) content = reasoning;
   if (!json) return content;
-  return parseJsonLoose(content);
+  return parseJsonLoose(content, reasoning);
 }
 
-function parseJsonLoose(text) {
-  let t = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) t = fence[1];
-  try { return JSON.parse(t); } catch (_) {}
-  const s = t.indexOf('{'); const e = t.lastIndexOf('}');
-  if (s >= 0 && e > s) { try { return JSON.parse(t.slice(s, e + 1)); } catch (_) {} }
-  const sa = t.indexOf('['); const ea = t.lastIndexOf(']');
-  if (sa >= 0 && ea > sa) { try { return { clips: JSON.parse(t.slice(sa, ea + 1)) }; } catch (_) {} }
-  throw new Error('Respon LLM bukan JSON valid: ' + t.slice(0, 200));
+function cleanJsonString(str) {
+  return str
+    .replace(/,\s*([}\]])/g, '$1') // remove trailing commas
+    .replace(/[\u0000-\u0009\u000B-\u001F]+/g, ' '); // remove illegal control chars but preserve newlines
+}
+
+function tryParse(str) {
+  if (!str || typeof str !== 'string') return null;
+  const trimmed = str.trim();
+  try { return JSON.parse(trimmed); } catch (_) {}
+  try { return JSON.parse(cleanJsonString(trimmed)); } catch (_) {}
+  return null;
+}
+
+function parseJsonLoose(text, rawFallback = '') {
+  let raw = String(text || '').trim();
+  if (!raw && rawFallback) raw = String(rawFallback).trim();
+  if (!raw) {
+    throw new Error('Respon LLM kosong. Jika menggunakan model reasoning (seperti DeepSeek R1), model mungkin kehabisan token saat berpikir. Coba pilih model non-reasoning atau naikkan max tokens.');
+  }
+
+  // 1. Bersihkan tag <think>...</think>
+  let withoutThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  if (/^<think>/i.test(withoutThink)) {
+    withoutThink = withoutThink.replace(/^<think>[\s\S]*$/i, '').trim();
+  }
+
+  const candidate = withoutThink || raw;
+
+  // 2. Cek code fence markdown
+  const fences = [...candidate.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+  for (const fence of fences) {
+    const parsed = tryParse(fence[1]);
+    if (parsed) return parsed;
+  }
+
+  // 3. Coba parse candidate secara langsung
+  let parsed = tryParse(candidate);
+  if (parsed) return parsed;
+
+  // 4. Cari objek {...} terbesar
+  const s = candidate.indexOf('{');
+  const e = candidate.lastIndexOf('}');
+  if (s >= 0 && e > s) {
+    parsed = tryParse(candidate.slice(s, e + 1));
+    if (parsed) return parsed;
+  }
+
+  // 5. Cari array [...] terbesar
+  const sa = candidate.indexOf('[');
+  const ea = candidate.lastIndexOf(']');
+  if (sa >= 0 && ea > sa) {
+    parsed = tryParse(candidate.slice(sa, ea + 1));
+    if (parsed) return { clips: parsed };
+  }
+
+  // 6. Salvage: Ekstrak klip-klip yang sudah selesai jika output terpotong
+  const clipMatches = candidate.match(/\{[^{}]*?"start"\s*:\s*[^{}]*?"end"\s*:\s*[^{}]*?\}/g);
+  if (clipMatches && clipMatches.length > 0) {
+    const recovered = [];
+    for (const cm of clipMatches) {
+      const c = tryParse(cm);
+      if (c && (c.start !== undefined || c.end !== undefined)) recovered.push(c);
+    }
+    if (recovered.length > 0) return { clips: recovered };
+  }
+
+  // 7. Jika candidate berbeda dari raw (karena <think>), coba cari juga di raw
+  if (candidate !== raw) {
+    const rawS = raw.indexOf('{');
+    const rawE = raw.lastIndexOf('}');
+    if (rawS >= 0 && rawE > rawS) {
+      parsed = tryParse(raw.slice(rawS, rawE + 1));
+      if (parsed) return parsed;
+    }
+  }
+
+  const sample = candidate.slice(0, 160).replace(/\s+/g, ' ');
+  throw new Error('Respon LLM bukan JSON valid: ' + (sample || '(respon kosong)'));
 }
 
 function parseTime(v) {
@@ -87,7 +162,10 @@ Rules for every clip:
 - "description" = 1-2 sentences: what happens and why it's engaging.
 - "hook" = punchy thumbnail/opening headline, max 8 words.
 ${langLine}
-Return ONLY JSON: {"clips":[{"start":"m:ss","end":"m:ss","title":"...","description":"...","hook":"...","score":85}]}
+CRITICAL OUTPUT RULES:
+- Reply ONLY valid raw JSON format: {"clips":[{"start":"m:ss","end":"m:ss","title":"...","description":"...","hook":"...","score":85}]}
+- Do NOT output any reasoning, thinking process (<think>), conversational filler, or Markdown explanations.
+- Start directly with { and end with }.
 Use timestamps from the transcript (format [m:ss] or [h:mm:ss]).`;
   const user = `Video title: ${videoTitle || '-'}
 Transcript window: ${fmt(from)} – ${fmt(to)}
@@ -188,9 +266,9 @@ async function suggestTitle({ settings, text, titleLang }) {
   const conf = providerConf(settings);
   const lang = titleLang && titleLang !== 'auto' ? (LANG_NAMES[titleLang] || titleLang) : 'the same language as the text';
   const res = await chat(conf, [
-    { role: 'system', content: `You write viral short-video titles. Reply ONLY JSON {"title":"...","description":"...","hook":"..."} in ${lang}. title max 70 chars, hook max 8 words.` },
+    { role: 'system', content: `You write viral short-video titles. Reply ONLY raw JSON {"title":"...","description":"...","hook":"..."} in ${lang}. No thinking or introductory text. title max 70 chars, hook max 8 words.` },
     { role: 'user', content: text.slice(0, 6000) },
-  ], { maxTokens: 600 });
+  ], { maxTokens: 800 });
   return { title: String(res.title || ''), description: String(res.description || ''), hook: String(res.hook || '') };
 }
 
@@ -212,7 +290,7 @@ async function listModels(settings, override) {
 async function testConnection(settings, override) {
   const conf = providerConf(settings, override);
   const t0 = Date.now();
-  const r = await chat(conf, [{ role: 'user', content: 'Reply with JSON {"ok":true}' }], { maxTokens: 300 });
+  const r = await chat(conf, [{ role: 'user', content: 'Reply ONLY JSON: {"ok":true}. No thoughts or preamble.' }], { maxTokens: 1000 });
   return { ok: true, ms: Date.now() - t0, provider: conf.name, model: conf.model, reply: r };
 }
 
