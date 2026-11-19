@@ -38,10 +38,11 @@ export function buildGroups(words, clip) {
 }
 
 export function activeAt(groups, t) {
+  if (!groups || !Array.isArray(groups)) return null;
   for (const g of groups) {
     if (t >= g.start && t < g.end) {
       let ai = 0;
-      for (let i = 0; i < g.words.length; i++) if (t >= (i === 0 ? g.start : g.words[i].s)) ai = i;
+      for (let i = 0; i < (g.words || []).length; i++) if (t >= (i === 0 ? g.start : g.words[i].s)) ai = i;
       return { group: g, ai };
     }
   }

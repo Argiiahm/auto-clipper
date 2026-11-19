@@ -550,9 +550,9 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
             <Player project={project} clip={clip} seq={seq} groups={groups} player={player} videoRef={videoRef} insRef={insRef} musicRef={musicRef} view={view} setView={setView}
               overlays={edit.overlays} selection={selection} setSelection={setSelection} onOverlayChange={onOverlayChange} imgs={imgs} assetUrl={assetUrl}
               watermark={wm && wm.enabled && edit.watermark !== false ? wm : null} wmUrl={wm && wm.type === 'image' && wm.image ? fileUrl(wm.image) : null}
-              adjust={edit.adjust} splitRatio={clip.splitRatio || settings.defaults.splitRatio || 42} onGenThumb={genThumb} genBusy={thumbBusy} onShow={show}
+              adjust={edit.adjust} splitRatio={(clip && clip.splitRatio) || (settings && settings.defaults && settings.defaults.splitRatio) || 42} onGenThumb={genThumb} genBusy={thumbBusy} onShow={show}
               onPatchClip={patch} onUpdateWord={updateTranscriptWord} onUpdateSentence={updateTranscriptSentence}
-              onSplitRatioChange={(sr) => { patch({ splitRatio: sr }); saveSettings({ defaults: { ...settings.defaults, splitRatio: sr } }); }}
+              onSplitRatioChange={(sr) => { patch({ splitRatio: sr }); saveSettings({ defaults: { ...((settings && settings.defaults) || {}), splitRatio: sr } }); }}
               vol={vol} setVol={setVol} muted={muted} setMuted={setMuted} sourceVolume={edit.music && edit.music.asset ? (edit.music.sourceVolume ?? 1) : 1} />
 
             {/* right: inspector */}

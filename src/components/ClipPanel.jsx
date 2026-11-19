@@ -4,7 +4,7 @@ import { Check, Slider, Spinner, Tabs, Section, Toggle, Segmented } from './ui.j
 import { CAPTION_STYLES, STYLE_IDS, containerStyle, wordStyle } from '../lib/captions';
 import { cx, fmtTime, scoreColor } from '../lib/format';
 
-function SubtitleWordEditor({ groups, onUpdateWord, onUpdateSentence, onReplaceWords }) {
+function SubtitleWordEditor({ groups = [], onUpdateWord, onUpdateSentence, onReplaceWords }) {
   const [editingWordIdx, setEditingWordIdx] = useState(null);
   const [wordVal, setWordVal] = useState('');
   const [editingLineIdx, setEditingLineIdx] = useState(null);

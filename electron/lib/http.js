@@ -17,23 +17,45 @@ function parseDuration(s) {
   return t;
 }
 
+function timeoutSignal(timeoutMs, parentSignal) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(new Error(`Timeout request setelah ${Math.round(timeoutMs / 1000)} dtk`)), timeoutMs);
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      clearTimeout(t);
+      ctrl.abort(parentSignal.reason || new Error('Dibatalkan'));
+    } else {
+      parentSignal.addEventListener('abort', () => {
+        clearTimeout(t);
+        ctrl.abort(parentSignal.reason || new Error('Dibatalkan'));
+      }, { once: true });
+    }
+  }
+  return { signal: ctrl.signal, clear: () => clearTimeout(t) };
+}
+
 /**
- * fetch with retries for 429/5xx/network errors.
+ * fetch with retries for 429/5xx/network errors and per-attempt timeout.
  * onWait(sec, reason) is called when sleeping for rate limits.
  */
-async function fetchRetry(url, makeInit, { retries = 8, onWait, signal, maxWaitTotal = 900 } = {}) {
+async function fetchRetry(url, makeInit, { retries = 8, onWait, signal, maxWaitTotal = 900, timeoutMs = 45000 } = {}) {
   let waited = 0; let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (signal && signal.aborted) throw new Error('Dibatalkan');
     let res, text;
+    const ts = timeoutSignal(timeoutMs, signal);
     try {
-      res = await fetch(url, { ...makeInit(), signal });
+      res = await fetch(url, { ...makeInit(), signal: ts.signal });
       text = await res.text();
     } catch (e) {
       if (signal && signal.aborted) throw new Error('Dibatalkan');
-      lastErr = e; const w = Math.min(30, 2 ** attempt);
+      lastErr = e;
+      if (attempt >= retries) break;
+      const w = Math.min(30, 2 ** attempt);
       onWait && onWait(w, 'koneksi gagal, mencoba lagi');
       await sleep(w * 1000); waited += w; continue;
+    } finally {
+      ts.clear();
     }
     if (res.ok) {
       try { return JSON.parse(text); } catch (_) { return text; }

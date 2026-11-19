@@ -25,7 +25,7 @@ export default function App() {
     try { await call('settings:save', { theme: t }); await call('theme:set', t); } catch (e) { toast(e.message, 'error'); }
   };
   const openSettings = (tab) => { setSettingsTab(typeof tab === 'string' ? tab : 'ai'); setShowSettings(true); };
-  const hasKey = settings && ((settings.keys || {})[settings.llmProvider] || settings.llmProvider === 'custom');
+  const hasKey = settings && ((settings.keys || {})[settings.llmProvider] || settings.llmProvider === 'custom' || settings.llmProvider === '9router');
 
   return (
     <div className="h-full flex flex-col">

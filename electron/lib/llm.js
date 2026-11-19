@@ -4,9 +4,9 @@ const { transcriptToText, fmt } = require('./transcribe');
 const PROVIDERS = {
   groq: { name: 'Groq', base: 'https://api.groq.com/openai/v1', chunkTokens: 4200, jsonMode: true, keyUrl: 'https://console.groq.com/keys' },
   gemini: { name: 'Google Gemini', base: 'https://generativelanguage.googleapis.com/v1beta/openai', chunkTokens: 90000, jsonMode: true, keyUrl: 'https://aistudio.google.com/apikey' },
-  openrouter: { name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', chunkTokens: 16000, jsonMode: true, keyUrl: 'https://openrouter.ai/keys' },
-  '9router': { name: '9Router', base: 'http://localhost:20128/v1', chunkTokens: 8000, jsonMode: true, keyUrl: 'http://localhost:20128' },
-  custom: { name: 'Custom (OpenAI-compatible)', base: '', chunkTokens: 8000, jsonMode: true, keyUrl: '' },
+  openrouter: { name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', chunkTokens: 16000, jsonMode: false, keyUrl: 'https://openrouter.ai/keys' },
+  '9router': { name: '9Router', base: 'http://localhost:20128/v1', chunkTokens: 5000, jsonMode: false, keyUrl: 'http://localhost:20128' },
+  custom: { name: 'Custom (OpenAI-compatible)', base: '', chunkTokens: 5000, jsonMode: false, keyUrl: '' },
 };
 
 function providerConf(settings, override) {
@@ -27,14 +27,99 @@ function headers(conf) {
   return h;
 }
 
-async function chat(conf, messages, { json = true, maxTokens = 2500, temperature = 0.4, onWait, signal } = {}) {
+function parseSSEStream(rawText) {
+  if (typeof rawText !== 'string') return null;
+  if (!rawText.includes('data:') && !rawText.includes('chat.completion.chunk')) return null;
+
+  let fullContent = '';
+  let fullReasoning = '';
+  const lines = rawText.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const jsonStr = trimmed.slice(5).trim();
+    if (!jsonStr || jsonStr === '[DONE]') continue;
+    try {
+      const chunk = JSON.parse(jsonStr);
+      if (Array.isArray(chunk.choices) && chunk.choices[0]) {
+        const c = chunk.choices[0];
+        const delta = c.delta || c.message || {};
+        if (typeof delta.content === 'string') fullContent += delta.content;
+        const reason = delta.reasoning_content || delta.reasoning || delta.thought || '';
+        if (reason) fullReasoning += reason;
+        if (typeof c.text === 'string') fullContent += c.text;
+      }
+    } catch (_) {}
+  }
+
+  if (fullContent.trim() || fullReasoning.trim()) {
+    return { content: fullContent || fullReasoning, reasoning: fullReasoning };
+  }
+  return null;
+}
+
+function extractResponseContent(res, providerName = 'LLM') {
+  if (!res) return { content: '', reasoning: '' };
+  if (typeof res === 'string') {
+    const sse = parseSSEStream(res);
+    if (sse) return sse;
+    return { content: res, reasoning: '' };
+  }
+
+  // Tangani jika proxy mengembalikan error di body HTTP 200
+  if (res.error) {
+    const emsg = typeof res.error === 'object' ? (res.error.message || JSON.stringify(res.error)) : String(res.error);
+    throw new Error(`${providerName} error: ${emsg}`);
+  }
+
+  let content = '';
+  let reasoning = '';
+
+  // 1. OpenAI chat format: res.choices[0].message
+  if (Array.isArray(res.choices) && res.choices.length > 0) {
+    const c = res.choices[0];
+    if (c.message) {
+      const m = c.message;
+      if (typeof m.content === 'string') content = m.content;
+      else if (Array.isArray(m.content)) content = m.content.map((x) => (typeof x === 'string' ? x : x.text || x.content || '')).join('');
+      reasoning = m.reasoning_content || m.reasoning || m.thought || '';
+    } else if (typeof c.text === 'string') {
+      content = c.text;
+    } else if (c.delta) {
+      if (typeof c.delta.content === 'string') content = c.delta.content;
+      reasoning = c.delta.reasoning_content || c.delta.reasoning || c.delta.thought || '';
+    }
+  }
+
+  // 2. Anthropic Claude format: res.content array
+  if (!content && Array.isArray(res.content)) {
+    content = res.content.map((x) => (typeof x === 'string' ? x : x.text || '')).join('');
+  }
+
+  // 3. Gemini format: res.candidates[0].content.parts
+  if (!content && res.candidates && res.candidates[0] && res.candidates[0].content) {
+    const parts = res.candidates[0].content.parts || [];
+    content = parts.map((p) => p.text || '').join('');
+  }
+
+  // 4. Ollama / custom direct format
+  if (!content && res.response) content = String(res.response);
+  if (!content && res.message && res.message.content) content = String(res.message.content);
+
+  if (!content.trim() && reasoning) content = reasoning;
+
+  return { content, reasoning };
+}
+
+async function chat(conf, messages, { json = true, maxTokens = 4000, temperature = 0.4, onWait, signal, retries = 10, timeoutMs = 60000 } = {}) {
   if (!conf.base) throw new Error('Base URL LLM belum diisi (Settings).');
   if (!conf.key && conf.id !== 'custom' && conf.id !== '9router') throw new Error(`API key ${conf.name} belum diisi. Buka Settings.`);
   if (!conf.model) throw new Error('Model LLM belum dipilih (Settings).');
-  const body = { model: conf.model, messages, temperature, max_tokens: maxTokens };
+  const body = { model: conf.model, messages, temperature, max_tokens: maxTokens, stream: false };
   if (/gpt-oss/i.test(conf.model) && conf.id === 'groq') { body.reasoning_effort = 'low'; delete body.temperature; }
   if (/qwen3/i.test(conf.model) && conf.id === 'groq') body.reasoning_format = 'hidden';
-  const tryOnce = (b) => fetchRetry(`${conf.base}/chat/completions`, () => ({ method: 'POST', headers: headers(conf), body: JSON.stringify(b) }), { onWait, signal, retries: 10, maxWaitTotal: 1200 });
+  const tryOnce = (b) => fetchRetry(`${conf.base}/chat/completions`, () => ({ method: 'POST', headers: headers(conf), body: JSON.stringify(b) }), { onWait, signal, retries, timeoutMs, maxWaitTotal: 1200 });
   let res;
   if (json && conf.jsonMode) {
     try { res = await tryOnce({ ...body, response_format: { type: 'json_object' } }); }
@@ -44,12 +129,12 @@ async function chat(conf, messages, { json = true, maxTokens = 2500, temperature
       } else throw e;
     }
   } else res = await tryOnce(body);
-  const choice = res && res.choices && res.choices[0];
-  const msg = choice && choice.message;
-  let content = msg ? (msg.content || '') : '';
-  if (Array.isArray(content)) content = content.map((c) => c.text || '').join('');
-  const reasoning = msg ? (msg.reasoning_content || msg.reasoning || msg.thought || '') : '';
-  if (!content.trim() && reasoning) content = reasoning;
+
+  const { content, reasoning } = extractResponseContent(res, conf.name);
+  if (!content.trim()) {
+    const preview = JSON.stringify(res).slice(0, 180);
+    throw new Error(`Respon LLM kosong dari ${conf.name} (${conf.model}). Pastikan model aktif di 9Router. Respon: ${preview}`);
+  }
   if (!json) return content;
   return parseJsonLoose(content, reasoning);
 }
@@ -239,7 +324,7 @@ async function findHighlights({ settings, transcript, duration, videoTitle, onPr
     let res;
     try {
       res = await chat(conf, buildPrompt({ transcriptText: text, minLen, maxLen, want, titleLang: settings.titleLanguage, videoTitle, from, to }), {
-        maxTokens: conf.id === 'groq' ? 2200 : 4000, signal,
+        maxTokens: conf.id === 'groq' ? 2200 : 6000, signal,
         onWait: (sec, why) => onProgress && onProgress(i / wins.length, `Menunggu ${why} ${conf.name} (${Math.round(sec)} dtk)… bagian ${i + 1}/${wins.length}`),
       });
     } catch (e) {
@@ -275,7 +360,7 @@ async function suggestTitle({ settings, text, titleLang }) {
 async function listModels(settings, override) {
   const conf = providerConf(settings, override);
   if (!conf.base) throw new Error('Base URL kosong');
-  const res = await fetchRetry(`${conf.base}/models`, () => ({ headers: headers(conf) }), { retries: 1 });
+  const res = await fetchRetry(`${conf.base}/models`, () => ({ headers: headers(conf) }), { retries: 0, timeoutMs: 8000 });
   let items = (res.data || res.models || []).map((m) => ({
     id: String(m.id || m.name || '').replace(/^models\//, ''),
     free: conf.id === 'openrouter' ? (/:free$/.test(m.id) || (m.pricing && Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0)) : undefined,
@@ -290,7 +375,11 @@ async function listModels(settings, override) {
 async function testConnection(settings, override) {
   const conf = providerConf(settings, override);
   const t0 = Date.now();
-  const r = await chat(conf, [{ role: 'user', content: 'Reply ONLY JSON: {"ok":true}. No thoughts or preamble.' }], { maxTokens: 1000 });
+  const r = await chat(conf, [{ role: 'user', content: 'Reply ONLY JSON: {"ok":true}. No thoughts or preamble.' }], {
+    maxTokens: 500,
+    retries: 0,
+    timeoutMs: 12000,
+  });
   return { ok: true, ms: Date.now() - t0, provider: conf.name, model: conf.model, reply: r };
 }
 

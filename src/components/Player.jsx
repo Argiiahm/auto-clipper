@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, ImageIcon, Wand2, FolderOpen, SkipBack, SkipForward, RotateCw, Edit3, Check as CheckIco, X } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, ImageIcon, Wand2, FolderOpen, SkipBack, SkipForward, RotateCw, Edit3, Check as CheckIco, X, Crosshair } from 'lucide-react';
 import { drawLayout } from '../lib/draw';
 import { activeAt, containerStyle, wordStyle } from '../lib/captions';
 import { drawOverlays, drawWatermark, overlayBox, cachedImage } from '../lib/overlay';
@@ -10,7 +10,7 @@ import { Spinner } from './ui.jsx';
 
 function CaptionOverlay({ clip, groups, t, scale, isSelected, onDown, onDoubleClick }) {
   const a = activeAt(groups, t);
-  if (!a || !clip.burnCaptions) return null;
+  if (!a || !clip || !clip.burnCaptions) return null;
   const isClean = clip.captionStyle === 'clean';
 
   return (
@@ -196,7 +196,7 @@ export default function Player({ project, clip, seq, groups, player, videoRef, i
     e.stopPropagation();
     const r = e.currentTarget.closest('[data-frame]').getBoundingClientRect();
     setSelection({ type: 'caption' });
-    setDrag({ mode: 'captionMove', sy: e.clientY, spos: clip.captionPos || 75, rh: r.height });
+    setDrag({ mode: 'captionMove', sy: e.clientY, spos: (clip && clip.captionPos) || 75, rh: r.height });
   };
 
   const onScaleDown = (e, o, corner = 'se') => {
