@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const store = require('./store');
 const media = require('./media');
-const { transcribeGroq, parseJson3 } = require('./transcribe');
+const { transcribe, transcribeGroq, parseJson3 } = require('./transcribe');
 const llm = require('./llm');
 const { buildAss } = require('./captions');
 const { renderClip, renderClipEdited } = require('./render');
@@ -156,8 +156,54 @@ const STEP_FN = {
     const p = store.loadProject(id);
     const settings = store.loadSettings();
     const lang = settings.language;
+    let transcriber = settings.transcriber || 'groq';
     let t;
-    const useYt = settings.transcriber === 'youtube' && p.source === 'youtube';
+
+    const getSttConf = (prov) => {
+      if (prov === 'gemini') {
+        return {
+          provider: 'gemini',
+          apiKey: settings.keys.gemini,
+          model: settings.geminiSttModel || 'gemini-2.5-flash',
+        };
+      }
+      if (prov === 'openai') {
+        return {
+          provider: 'openai',
+          apiKey: settings.keys.openai,
+          model: 'whisper-1',
+          endpoint: 'https://api.openai.com/v1/audio/transcriptions',
+        };
+      }
+      if (prov === '9router') {
+        const base = (settings.nineRouterBaseUrl || 'http://localhost:20128/v1').replace(/\/+$/, '');
+        return {
+          provider: '9router',
+          apiKey: settings.keys?.['9router'] || '',
+          model: settings.whisperModel || 'whisper-1',
+          endpoint: `${base}/audio/transcriptions`,
+        };
+      }
+      if (prov === 'custom') {
+        const base = (settings.customSttUrl || settings.customBaseUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
+        const endpoint = base.endsWith('/audio/transcriptions') ? base : `${base}/audio/transcriptions`;
+        return {
+          provider: 'custom',
+          apiKey: settings.keys?.custom || '',
+          model: settings.whisperModel || 'whisper-1',
+          endpoint,
+        };
+      }
+      // default: groq
+      return {
+        provider: 'groq',
+        apiKey: settings.keys.groq,
+        model: settings.whisperModel || 'whisper-large-v3-turbo',
+        endpoint: 'https://api.groq.com/openai/v1/audio/transcriptions',
+      };
+    };
+
+    const useYt = transcriber === 'youtube' && p.source === 'youtube';
     if (useYt) {
       stepProgress(id, 'transcribe', 0.2, 'Mengambil caption YouTube…');
       try {
@@ -166,21 +212,58 @@ const STEP_FN = {
         if (parsed.words.length < 10) throw new Error('Caption terlalu sedikit');
         t = { source: 'youtube', language: sub.lang, ...parsed };
       } catch (e) {
-        if (!settings.keys.groq) throw e;
-        stepProgress(id, 'transcribe', 0.1, 'Caption YouTube tidak ada, pakai Groq Whisper…');
+        stepProgress(id, 'transcribe', 0.1, 'Caption YouTube tidak ada, mencoba AI Transkrip…');
       }
     }
+
     if (!t) {
-      if (!settings.keys.groq) throw new Error('API key Groq belum diisi (dibutuhkan untuk Whisper). Buka Settings → API Keys, atau pilih "Caption YouTube".');
-      const chunks = await media.extractAudioChunks(path.join(p.dir, p.video.path), path.join(p.dir, 'audio'), p.video.duration, 600,
-        (f) => stepProgress(id, 'transcribe', f * 0.15, 'Menyiapkan audio…'), id);
-      t = await transcribeGroq(chunks, { apiKey: settings.keys.groq, model: settings.whisperModel, language: lang, signal },
-        (f, d) => stepProgress(id, 'transcribe', 0.15 + f * 0.85, d));
+      let prov = transcriber === 'youtube' ? 'groq' : transcriber;
+      let conf = getSttConf(prov);
+
+      // Smart fallback if the chosen provider has no API key
+      if (!conf.apiKey && prov !== '9router' && prov !== 'custom') {
+        if (settings.keys.gemini && prov !== 'gemini') {
+          prov = 'gemini';
+          conf = getSttConf('gemini');
+        } else if (settings.keys.groq && prov !== 'groq') {
+          prov = 'groq';
+          conf = getSttConf('groq');
+        } else if (settings.keys.openai && prov !== 'openai') {
+          prov = 'openai';
+          conf = getSttConf('openai');
+        } else {
+          throw new Error(`API key untuk transkrip (${prov}) belum diisi. Buka Settings → Transkrip.`);
+        }
+      }
+
+      const chunks = await media.extractAudioChunks(
+        path.join(p.dir, p.video.path),
+        path.join(p.dir, 'audio'),
+        p.video.duration,
+        600,
+        (f) => stepProgress(id, 'transcribe', f * 0.15, 'Menyiapkan audio…'),
+        id
+      );
+
+      t = await transcribe(chunks, {
+        ...conf,
+        language: lang,
+        signal,
+      }, (f, d) => stepProgress(id, 'transcribe', 0.15 + f * 0.85, d));
     }
+
     if (signal.aborted) throw new Error('Dibatalkan');
     store.saveTranscript(p, t);
     await update(id, (q) => { q.language = t.language; q.transcriptSource = t.source; return q; });
-    return `${t.words.length} kata, bahasa ${t.language || '?'} (${t.source === 'youtube' ? 'caption YouTube' : 'Groq Whisper'})`;
+    const provLabels = {
+      youtube: 'caption YouTube',
+      groq: 'Groq Whisper',
+      gemini: 'Google Gemini',
+      openai: 'OpenAI Whisper',
+      '9router': '9Router Whisper',
+      custom: 'Custom STT',
+    };
+    return `${t.words.length} kata, bahasa ${t.language || '?'} (${provLabels[t.source] || t.source})`;
   },
 
   async highlights(id, signal) {

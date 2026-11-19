@@ -3,25 +3,130 @@ const path = require('path');
 const { fetchRetry } = require('./http');
 
 const GROQ_STT = 'https://api.groq.com/openai/v1/audio/transcriptions';
+const OPENAI_STT = 'https://api.openai.com/v1/audio/transcriptions';
 
-async function groqTranscribeChunk(chunk, { apiKey, model, language, onWait, signal }) {
+/**
+ * Universal OpenAI-compatible Whisper transcription (Groq, OpenAI, 9Router, Custom server).
+ */
+async function whisperTranscribeChunk(chunk, { endpoint, apiKey, model, language, onWait, signal }) {
   const buf = fs.readFileSync(chunk.file);
-  const json = await fetchRetry(GROQ_STT, () => {
+  const ep = endpoint || GROQ_STT;
+  const json = await fetchRetry(ep, () => {
     const fd = new FormData();
     fd.append('file', new Blob([buf], { type: 'audio/mpeg' }), path.basename(chunk.file));
-    fd.append('model', model || 'whisper-large-v3-turbo');
+    if (model) fd.append('model', model);
     fd.append('response_format', 'verbose_json');
     fd.append('timestamp_granularities[]', 'word');
     fd.append('timestamp_granularities[]', 'segment');
     fd.append('temperature', '0');
     if (language && language !== 'auto') fd.append('language', language);
-    return { method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: fd };
-  }, { onWait, signal, retries: 12, maxWaitTotal: 3700 });
+    const headers = {};
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    return { method: 'POST', headers, body: fd };
+  }, { onWait, signal, retries: 8, maxWaitTotal: 3700, timeoutMs: 65000 });
+
   const off = chunk.start;
-  const segments = (json.segments || []).map((s) => ({ s: s.start + off, e: s.end + off, text: String(s.text || '').trim() })).filter((s) => s.text);
-  let words = (json.words || []).map((w) => ({ w: String(w.word || '').trim(), s: w.start + off, e: w.end + off })).filter((w) => w.w);
-  if (!words.length) words = wordsFromSegments(segments);
+  let segments = [];
+  let words = [];
+
+  if (Array.isArray(json.segments)) {
+    segments = json.segments.map((s) => ({
+      s: (Number(s.start) || 0) + off,
+      e: (Number(s.end) || 0) + off,
+      text: String(s.text || '').trim(),
+    })).filter((s) => s.text);
+  }
+
+  if (Array.isArray(json.words)) {
+    words = json.words.map((w) => ({
+      w: String(w.word || '').trim(),
+      s: (Number(w.start) || 0) + off,
+      e: (Number(w.end) || 0) + off,
+    })).filter((w) => w.w);
+  }
+
+  // Fallback if provider only returned simple { text: "..." }
+  if (!segments.length && json.text) {
+    segments = [{ s: off, e: off + (chunk.len || 10), text: String(json.text).trim() }];
+  }
+  if (!words.length && segments.length) {
+    words = wordsFromSegments(segments);
+  }
+
   return { language: json.language, segments, words };
+}
+
+/**
+ * Google Gemini multimodal audio transcription (Free, accurate, multilingual).
+ */
+async function geminiTranscribeChunk(chunk, { apiKey, model = 'gemini-2.5-flash', language, onWait, signal }) {
+  if (!apiKey) throw new Error('API key Google Gemini belum diisi. Buka Settings.');
+  const buf = fs.readFileSync(chunk.file);
+  const b64 = buf.toString('base64');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const langInstruction = language && language !== 'auto' ? ` The spoken audio is in ${language}.` : '';
+  const prompt = `Transcribe this audio recording accurately.${langInstruction}
+Return ONLY a valid JSON object matching this exact schema:
+{
+  "language": "id",
+  "segments": [
+    {"start": 0.0, "end": 3.5, "text": "transcribed speech..."},
+    {"start": 3.5, "end": 7.0, "text": "next phrase..."}
+  ]
+}
+Requirements:
+1. start and end are floating point numbers in seconds relative to the audio start (0.0 to ${Math.round(chunk.len || 600)}).
+2. Group spoken words into short natural sentences or phrases (2-6 seconds each).
+3. Transcribe all spoken words accurately without omitting anything.
+4. Output strictly valid JSON without markdown wrapping.`;
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          { inline_data: { mime_type: 'audio/mp3', data: b64 } },
+          { text: prompt },
+        ],
+      },
+    ],
+    generationConfig: {
+      response_mime_type: 'application/json',
+      temperature: 0.1,
+    },
+  };
+
+  const res = await fetchRetry(url, () => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }), { onWait, signal, retries: 5, maxWaitTotal: 1800, timeoutMs: 90000 });
+
+  let rawText = '';
+  if (res && res.candidates && res.candidates[0] && res.candidates[0].content) {
+    const parts = res.candidates[0].content.parts || [];
+    rawText = parts.map((p) => p.text || '').join('');
+  }
+
+  if (!rawText.trim()) throw new Error('Respon transkrip Gemini kosong');
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText.replace(/```json/gi, '').replace(/```/g, '').trim());
+  } catch (e) {
+    throw new Error('Gagal memproses JSON transkrip Gemini: ' + rawText.slice(0, 150));
+  }
+
+  const off = chunk.start;
+  const rawSegs = Array.isArray(parsed.segments) ? parsed.segments : [];
+  const segments = rawSegs.map((s) => ({
+    s: (Number(s.start) || 0) + off,
+    e: (Number(s.end) || 0) + off,
+    text: String(s.text || '').trim(),
+  })).filter((s) => s.text);
+
+  const words = wordsFromSegments(segments);
+  return { language: parsed.language || language, segments, words };
 }
 
 function wordsFromSegments(segments) {
@@ -52,22 +157,65 @@ function segmentsFromWords(words) {
   return segs;
 }
 
-async function transcribeGroq(chunks, opts, onProgress) {
+/**
+ * Unified multi-provider transcription runner (Groq, Gemini, OpenAI, 9Router, Custom).
+ */
+async function transcribe(chunks, opts = {}, onProgress) {
+  const { provider = 'groq', apiKey, model, language, endpoint, signal } = opts;
   const all = { language: null, segments: [], words: [] };
+
+  const provLabels = {
+    groq: 'Groq Whisper',
+    gemini: 'Google Gemini',
+    openai: 'OpenAI Whisper',
+    '9router': '9Router Whisper',
+    custom: 'Custom STT',
+  };
+  const label = provLabels[provider] || provider;
+
   for (let i = 0; i < chunks.length; i++) {
-    onProgress && onProgress(i / chunks.length, `Transkrip bagian ${i + 1}/${chunks.length}…`);
-    const r = await groqTranscribeChunk(chunks[i], {
-      ...opts,
-      onWait: (sec, why) => onProgress && onProgress(i / chunks.length, `Menunggu ${why} Groq (${Math.round(sec)} dtk)…`),
-    });
+    onProgress && onProgress(i / chunks.length, `Transkrip bagian ${i + 1}/${chunks.length} via ${label}…`);
+
+    let r;
+    if (provider === 'gemini') {
+      r = await geminiTranscribeChunk(chunks[i], {
+        apiKey,
+        model: model || 'gemini-2.5-flash',
+        language,
+        onWait: (sec, why) => onProgress && onProgress(i / chunks.length, `Menunggu ${why} Gemini (${Math.round(sec)} dtk)…`),
+        signal,
+      });
+    } else {
+      const ep = endpoint || (
+        provider === 'openai' ? OPENAI_STT
+        : provider === '9router' ? 'http://localhost:20128/v1/audio/transcriptions'
+        : GROQ_STT
+      );
+      const mod = model || (provider === 'openai' ? 'whisper-1' : 'whisper-large-v3-turbo');
+      r = await whisperTranscribeChunk(chunks[i], {
+        endpoint: ep,
+        apiKey,
+        model: mod,
+        language,
+        onWait: (sec, why) => onProgress && onProgress(i / chunks.length, `Menunggu ${why} ${label} (${Math.round(sec)} dtk)…`),
+        signal,
+      });
+    }
+
     all.language = all.language || r.language;
     // de-duplicate words at chunk boundaries
     const lastEnd = all.words.length ? all.words[all.words.length - 1].e : -1;
     all.words.push(...r.words.filter((w) => w.s >= lastEnd - 0.05));
     all.segments.push(...r.segments);
   }
+
   onProgress && onProgress(1, 'Selesai');
-  return { source: 'groq', ...all };
+  return { source: provider, ...all };
+}
+
+/** Backward compatibility alias */
+async function transcribeGroq(chunks, opts, onProgress) {
+  return transcribe(chunks, { provider: 'groq', ...opts }, onProgress);
 }
 
 /** Parse YouTube json3 caption file into words + segments */
@@ -107,4 +255,4 @@ function fmt(sec) {
   return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s).padStart(2, '0');
 }
 
-module.exports = { transcribeGroq, parseJson3, segmentsFromWords, transcriptToText, fmt };
+module.exports = { transcribe, transcribeGroq, parseJson3, segmentsFromWords, wordsFromSegments, transcriptToText, fmt };

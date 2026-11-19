@@ -18,8 +18,10 @@ const DEFAULT_SETTINGS = {
   },
   nineRouterBaseUrl: 'http://localhost:20128/v1',
   customBaseUrl: 'http://localhost:11434/v1',
-  transcriber: 'groq', // groq | youtube
+  transcriber: 'groq', // groq | gemini | openai | 9router | custom | youtube
   whisperModel: 'whisper-large-v3-turbo',
+  geminiSttModel: 'gemini-2.5-flash',
+  customSttUrl: 'http://localhost:20128/v1/audio/transcriptions',
   language: 'auto', // spoken language: auto | id | en | ...
   titleLanguage: 'auto', // language of clip titles: auto = same as video
   clipCount: 10,
@@ -51,7 +53,7 @@ const DEFAULT_SETTINGS = {
   },
 };
 
-const KEY_NAMES = ['groq', 'gemini', 'openrouter', '9router', 'custom'];
+const KEY_NAMES = ['groq', 'gemini', 'openrouter', '9router', 'custom', 'openai'];
 
 function settingsPath() { return path.join(userDataDir(), 'settings.json'); }
 

@@ -18,6 +18,15 @@ const PROVIDERS = [
     models: [] },
   { id: 'custom', name: 'Custom / Lokal', note: 'OpenAI-compatible (Ollama, LM Studio)', url: '', models: ['llama3.1', 'qwen2.5:7b'] },
 ];
+
+const TRANSCRIBERS = [
+  ['groq', 'Groq Whisper', 'Gratis & cepat. Timestamp per kata presisi tinggi.'],
+  ['gemini', 'Google Gemini (Audio)', 'Gratis via Gemini key. Sangat pintar memahami konteks bahasa.'],
+  ['9router', '9Router Whisper', 'Proxy Whisper lokal (default port 20128).'],
+  ['openai', 'OpenAI Whisper', 'Model resmi whisper-1 dari OpenAI.'],
+  ['custom', 'Custom STT', 'Endpoint Whisper lokal / OpenAI-compatible STT.'],
+  ['youtube', 'Caption YouTube', 'Langsung ambil subtitle YouTube tanpa API key.'],
+];
 const LANGS = [['auto', 'Deteksi otomatis'], ['id', 'Indonesia'], ['en', 'English'], ['ms', 'Melayu'], ['jv', 'Jawa'], ['su', 'Sunda'], ['es', 'Español'], ['pt', 'Português'], ['ja', '日本語'], ['ko', '한국어'], ['th', 'ไทย'], ['vi', 'Tiếng Việt'], ['hi', 'Hindi'], ['ar', 'Arabic']];
 
 function KeyInput({ value, onChange, placeholder }) {
@@ -127,8 +136,8 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
               <button className="btn-soft" onClick={test} disabled={testing}>{testing ? <Spinner /> : <CheckCircle2 size={15} />}Tes koneksi</button>
               <span className="text-[12px] text-muted">Pakai key & model di atas, tanpa perlu disimpan.</span>
             </div>
-            {s.llmProvider !== 'groq' && (
-              <Field label="API key Groq (untuk transkrip Whisper)" hint="Transkrip memakai Groq Whisper. Bisa juga pakai 'Caption YouTube' di tab Transkrip (tanpa key).">
+            {s.llmProvider !== 'groq' && s.transcriber === 'groq' && (
+              <Field label="API key Groq (untuk transkrip Whisper)" hint="Transkrip memakai Groq Whisper. Kelola opsi transkrip lain di tab Transkrip.">
                 <KeyInput value={s.keys.groq} onChange={(v) => setKey('groq', v)} placeholder="gsk_…" />
               </Field>
             )}
@@ -137,20 +146,76 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
           {tab === 'stt' && (<>
             <Field label="Sumber transkrip">
               <div className="grid grid-cols-2 gap-2">
-                {[['groq', 'Groq Whisper', 'Timestamp per kata. Gratis (±2 jam audio/jam).'], ['youtube', 'Caption YouTube', 'Tanpa API key. Fallback ke Whisper bila tidak tersedia.']].map(([id, n, d]) => (
-                  <button key={id} onClick={() => set({ transcriber: id })} className={cx('text-left p-3 rounded-lg border transition', s.transcriber === id ? 'border-accent bg-accent/10' : 'border-line hover:border-faint bg-panel2')}>
+                {TRANSCRIBERS.map(([id, n, d]) => (
+                  <button key={id} onClick={() => set({ transcriber: id })} className={cx('text-left p-3 rounded-lg border transition', (s.transcriber || 'groq') === id ? 'border-accent bg-accent/10' : 'border-line hover:border-faint bg-panel2')}>
                     <div className="font-semibold text-fg text-[13px]">{n}</div><div className="text-[11.5px] text-muted mt-0.5">{d}</div>
                   </button>
                 ))}
               </div>
             </Field>
-            <Field label="Model Whisper">
-              <Segmented size="md" value={s.whisperModel} onChange={(v) => set({ whisperModel: v })} options={[{ value: 'whisper-large-v3-turbo', label: 'large-v3-turbo (cepat)' }, { value: 'whisper-large-v3', label: 'large-v3 (paling akurat)' }]} />
+
+            {(s.transcriber === 'groq' || !s.transcriber) && (<>
+              <Field label="Model Groq Whisper">
+                <Segmented size="md" value={s.whisperModel || 'whisper-large-v3-turbo'} onChange={(v) => set({ whisperModel: v })} options={[{ value: 'whisper-large-v3-turbo', label: 'large-v3-turbo (cepat)' }, { value: 'whisper-large-v3', label: 'large-v3 (paling akurat)' }]} />
+              </Field>
+              <Field label="API key Groq" hint="Dibutuhkan untuk Groq Whisper. Gratis di console.groq.com.">
+                <KeyInput value={s.keys.groq} onChange={(v) => setKey('groq', v)} placeholder="gsk_…" />
+              </Field>
+            </>)}
+
+            {s.transcriber === 'gemini' && (<>
+              <Field label="Model Gemini STT">
+                <Segmented size="md" value={s.geminiSttModel || 'gemini-2.5-flash'} onChange={(v) => set({ geminiSttModel: v })} options={[{ value: 'gemini-2.5-flash', label: 'gemini-2.5-flash (terbaru & cepat)' }, { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash' }]} />
+              </Field>
+              <Field label="API key Google Gemini" hint="Menggunakan API key Gemini yang sama dengan tab AI (gratis di aistudio.google.com).">
+                <KeyInput value={s.keys.gemini} onChange={(v) => setKey('gemini', v)} placeholder="AIzaSy…" />
+              </Field>
+            </>)}
+
+            {s.transcriber === '9router' && (<>
+              <Field label="9Router Base URL" hint="Endpoint routing AI lokal 9Router.">
+                <input className="input font-mono text-[12.5px]" value={s.nineRouterBaseUrl || 'http://localhost:20128/v1'} onChange={(e) => set({ nineRouterBaseUrl: e.target.value.trim() })} placeholder="http://localhost:20128/v1" />
+              </Field>
+              <Field label="Nama model Whisper di 9Router" hint="Nama model Whisper yang aktif di 9Router.">
+                <input className="input font-mono text-[12.5px]" value={s.whisperModel || 'whisper-1'} onChange={(e) => set({ whisperModel: e.target.value.trim() })} placeholder="whisper-1" />
+              </Field>
+              <Field label="API key 9Router (Opsional)" hint="Kosongkan jika 9Router lokal tidak membutuhkan token.">
+                <KeyInput value={(s.keys || {})['9router']} onChange={(v) => setKey('9router', v)} placeholder="Opsional" />
+              </Field>
+            </>)}
+
+            {s.transcriber === 'openai' && (<>
+              <Field label="Model Whisper OpenAI">
+                <div className="text-[12px] font-mono text-fg bg-panel2 p-2 rounded border border-line">whisper-1</div>
+              </Field>
+              <Field label="API key OpenAI" hint="Dibutuhkan untuk OpenAI Whisper (platform.openai.com).">
+                <KeyInput value={(s.keys || {}).openai} onChange={(v) => setKey('openai', v)} placeholder="sk-…" />
+              </Field>
+            </>)}
+
+            {s.transcriber === 'custom' && (<>
+              <Field label="Custom STT Endpoint URL" hint="URL lengkap endpoint audio transcription (OpenAI-compatible / Whisper server).">
+                <input className="input font-mono text-[12.5px]" value={s.customSttUrl || ''} onChange={(e) => set({ customSttUrl: e.target.value.trim() })} placeholder="http://localhost:8000/v1/audio/transcriptions" />
+              </Field>
+              <Field label="Nama model STT">
+                <input className="input font-mono text-[12.5px]" value={s.whisperModel || 'whisper-1'} onChange={(e) => set({ whisperModel: e.target.value.trim() })} placeholder="whisper-1" />
+              </Field>
+              <Field label="API key Custom (Opsional)">
+                <KeyInput value={(s.keys || {}).custom} onChange={(v) => setKey('custom', v)} placeholder="Bearer token jika ada" />
+              </Field>
+            </>)}
+
+            {s.transcriber === 'youtube' && (
+              <div className="text-[12px] text-muted p-3 rounded-lg bg-panel2 border border-line leading-relaxed">
+                Subtitle diunduh langsung dari YouTube (auto-caption atau subtitle resmi).
+                <br /><br />
+                <span className="text-accent-300 font-medium">Catatan:</span> Jika video lokal atau YouTube tidak menyediakan subtitle, sistem otomatis beralih ke AI Transkrip.
+              </div>
+            )}
+
+            <Field label="Bahasa video" hint="Pilih bahasa yang tepat agar transkrip lebih akurat.">
+              <select className="input w-72" value={s.language || 'auto'} onChange={(e) => set({ language: e.target.value })}>{LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             </Field>
-            <Field label="Bahasa video" hint="Bahasa yang tepat membuat transkrip lebih akurat.">
-              <select className="input w-72" value={s.language} onChange={(e) => set({ language: e.target.value })}>{LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            </Field>
-            <Field label="API key Groq" hint="Dibutuhkan untuk Whisper."><KeyInput value={s.keys.groq} onChange={(v) => setKey('groq', v)} placeholder="gsk_…" /></Field>
           </>)}
 
           {tab === 'clips' && (<>
