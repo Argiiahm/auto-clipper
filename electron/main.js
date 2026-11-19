@@ -66,6 +66,34 @@ handle('project:run', (id, from, only) => { pipeline.runPipeline(id, from, only)
 handle('project:cancel', (id) => { pipeline.cancel(id); return true; });
 handle('project:rename', async (id, title) => { const p = store.loadProject(id); p.title = title; return store.saveProject(p); });
 handle('transcript:get', (id) => store.loadTranscript(store.loadProject(id)));
+handle('transcript:save', async (id, transcript) => {
+  const p = store.loadProject(id);
+  store.saveTranscript(p, transcript);
+  return true;
+});
+handle('transcript:updateWord', async (id, wordIndex, newText) => {
+  const p = store.loadProject(id);
+  const t = store.loadTranscript(p);
+  if (!t || !t.words || !t.words[wordIndex]) throw new Error('Kata tidak ditemukan di transkrip');
+  t.words[wordIndex].w = String(newText || '').trim();
+  store.saveTranscript(p, t);
+  return t;
+});
+handle('transcript:replaceWords', async (id, findText, replaceWith, matchCase = false) => {
+  const p = store.loadProject(id);
+  const t = store.loadTranscript(p);
+  if (!t || !t.words || !findText) throw new Error('Transkrip atau kata pencarian kosong');
+  const target = String(findText).trim();
+  const repl = String(replaceWith || '').trim();
+  let count = 0;
+  t.words = t.words.map((w) => {
+    const isMatch = matchCase ? w.w === target : w.w.toLowerCase() === target.toLowerCase();
+    if (isMatch) { count++; return { ...w, w: repl }; }
+    return w;
+  });
+  store.saveTranscript(p, t);
+  return { transcript: t, count };
+});
 handle('clip:patch', (id, clipId, patch) => pipeline.patchClip(id, clipId, patch));
 handle('clips:patch', (id, clipIds, patch) => pipeline.patchClips(id, clipIds, patch));
 handle('clip:add', (id, range) => pipeline.addClip(id, range));

@@ -158,6 +158,58 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
     patchClipFields(e.cid, e.after, false, false); hist.current.undo.push(e); setHistTick((x) => x + 1);
   };
 
+  /* ---------- transcript / subtitle manual edits ---------- */
+  const updateTranscriptWord = useCallback(async (origIdx, newText) => {
+    if (!transcript || !transcript.words || origIdx == null) return;
+    const clean = String(newText || '').trim();
+    if (!clean) return;
+    const nextWords = [...transcript.words];
+    if (!nextWords[origIdx]) return;
+    nextWords[origIdx] = { ...nextWords[origIdx], w: clean };
+    const nextT = { ...transcript, words: nextWords };
+    setTranscript(nextT);
+    try {
+      await call('transcript:updateWord', id, origIdx, clean);
+      toast('Kata subtitle diperbarui', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }, [id, transcript]);
+
+  const updateTranscriptSentence = useCallback(async (wordsList, newSentence) => {
+    if (!transcript || !transcript.words || !wordsList || !wordsList.length) return;
+    const newWords = String(newSentence || '').trim().split(/\s+/).filter(Boolean);
+    if (!newWords.length) return;
+    const nextWords = [...transcript.words];
+    wordsList.forEach((wItem, i) => {
+      const idx = wItem.origIdx;
+      if (idx != null && nextWords[idx]) {
+        if (i < newWords.length) nextWords[idx] = { ...nextWords[idx], w: newWords[i] };
+      }
+    });
+    if (newWords.length > wordsList.length) {
+      const lastIdx = wordsList[wordsList.length - 1].origIdx;
+      if (lastIdx != null && nextWords[lastIdx]) {
+        nextWords[lastIdx] = { ...nextWords[lastIdx], w: newWords.slice(wordsList.length - 1).join(' ') };
+      }
+    }
+    const nextT = { ...transcript, words: nextWords };
+    setTranscript(nextT);
+    try {
+      await call('transcript:save', id, nextT);
+      toast('Subtitle berhasil diperbarui', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }, [id, transcript]);
+
+  const replaceTranscriptWords = useCallback(async (findText, replaceWith, matchCase = false) => {
+    if (!findText || !findText.trim()) return;
+    try {
+      const res = await call('transcript:replaceWords', id, findText, replaceWith, matchCase);
+      if (res && res.transcript) {
+        setTranscript(res.transcript);
+        toast(`${res.count} kata subtitle berhasil diganti`, 'success');
+      }
+    } catch (e) { toast(e.message, 'error'); }
+  }, [id]);
+
   /* ---------- editor actions ---------- */
   const addText = (preset) => {
     if (!clip) return;
@@ -401,7 +453,9 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
             <button className="ml-auto text-accent-300 hover:underline inline-flex items-center gap-1" onClick={restoreCuts}><Undo2 size={11} />Pulihkan</button>
           </div>
         )}
-        <div className="flex-1 min-h-0"><ClipPanel project={project} clip={clip} patch={patch} videoRef={videoRef} onDelete={delClip} onAiTitle={aiTitle} aiBusy={aiBusy} openWebcam={() => setWebcamOpen(true)} onApplyAll={applyAll} selectedCount={selected.length} tab={inspTab} setTab={setInspTab} /></div>
+        <div className="flex-1 min-h-0">
+          <ClipPanel project={project} clip={clip} patch={patch} videoRef={videoRef} onDelete={delClip} onAiTitle={aiTitle} aiBusy={aiBusy} openWebcam={() => setWebcamOpen(true)} onApplyAll={applyAll} selectedCount={selected.length} tab={inspTab} setTab={setInspTab} groups={groups} onUpdateWord={updateTranscriptWord} onUpdateSentence={updateTranscriptSentence} onReplaceWords={replaceTranscriptWords} />
+        </div>
       </div>
     );
   }
@@ -496,7 +550,9 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
             <Player project={project} clip={clip} seq={seq} groups={groups} player={player} videoRef={videoRef} insRef={insRef} musicRef={musicRef} view={view} setView={setView}
               overlays={edit.overlays} selection={selection} setSelection={setSelection} onOverlayChange={onOverlayChange} imgs={imgs} assetUrl={assetUrl}
               watermark={wm && wm.enabled && edit.watermark !== false ? wm : null} wmUrl={wm && wm.type === 'image' && wm.image ? fileUrl(wm.image) : null}
-              adjust={edit.adjust} splitRatio={settings.defaults.splitRatio || 42} onGenThumb={genThumb} genBusy={thumbBusy} onShow={show}
+              adjust={edit.adjust} splitRatio={clip.splitRatio || settings.defaults.splitRatio || 42} onGenThumb={genThumb} genBusy={thumbBusy} onShow={show}
+              onPatchClip={patch} onUpdateWord={updateTranscriptWord} onUpdateSentence={updateTranscriptSentence}
+              onSplitRatioChange={(sr) => { patch({ splitRatio: sr }); saveSettings({ defaults: { ...settings.defaults, splitRatio: sr } }); }}
               vol={vol} setVol={setVol} muted={muted} setMuted={setMuted} sourceVolume={edit.music && edit.music.asset ? (edit.music.sourceVolume ?? 1) : 1} />
 
             {/* right: inspector */}

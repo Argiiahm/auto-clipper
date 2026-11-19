@@ -1,8 +1,172 @@
 import React, { useEffect, useState } from 'react';
-import { Minus, Plus, Trash2, Sparkles, Crosshair, Copy, Webcam } from 'lucide-react';
-import { Check, Slider, Spinner, Tabs, Section, Toggle } from './ui.jsx';
+import { Minus, Plus, Trash2, Sparkles, Crosshair, Copy, Webcam, Edit3, Check as CheckIco, Replace, Type, Search } from 'lucide-react';
+import { Check, Slider, Spinner, Tabs, Section, Toggle, Segmented } from './ui.jsx';
 import { CAPTION_STYLES, STYLE_IDS, containerStyle, wordStyle } from '../lib/captions';
 import { cx, fmtTime, scoreColor } from '../lib/format';
+
+function SubtitleWordEditor({ groups, onUpdateWord, onUpdateSentence, onReplaceWords }) {
+  const [editingWordIdx, setEditingWordIdx] = useState(null);
+  const [wordVal, setWordVal] = useState('');
+  const [editingLineIdx, setEditingLineIdx] = useState(null);
+  const [lineVal, setLineVal] = useState('');
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const startEditWord = (w) => {
+    if (w.origIdx == null) return;
+    setEditingLineIdx(null);
+    setEditingWordIdx(w.origIdx);
+    setWordVal(w.rawW || w.w || '');
+  };
+
+  const commitWord = (idx) => {
+    if (idx != null && wordVal.trim() && onUpdateWord) {
+      onUpdateWord(idx, wordVal.trim());
+    }
+    setEditingWordIdx(null);
+  };
+
+  const startEditLine = (gi, g) => {
+    setEditingWordIdx(null);
+    setEditingLineIdx(gi);
+    setLineVal(g.words.map((w) => w.rawW || w.w).join(' '));
+  };
+
+  const commitLine = (g) => {
+    if (lineVal.trim() && onUpdateSentence) {
+      onUpdateSentence(g.words, lineVal.trim());
+    }
+    setEditingLineIdx(null);
+  };
+
+  const doReplace = async () => {
+    if (!findText.trim() || !onReplaceWords) return;
+    setBusy(true);
+    try {
+      await onReplaceWords(findText.trim(), replaceText.trim());
+      setFindText('');
+      setReplaceText('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Find & Replace card */}
+      <div className="p-3 rounded-lg border border-line bg-panel2 space-y-2.5">
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-fg">
+          <Replace size={13} className="text-accent" />
+          <span>Cari & Ganti Kata Typo</span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <input
+            className="input text-[12px] font-mono"
+            placeholder="Cari kata typo…"
+            value={findText}
+            onChange={(e) => setFindText(e.target.value)}
+          />
+          <input
+            className="input text-[12px] font-mono"
+            placeholder="Ganti dengan…"
+            value={replaceText}
+            onChange={(e) => setReplaceText(e.target.value)}
+          />
+        </div>
+        <button
+          className="btn-soft btn-sm w-full justify-center"
+          disabled={!findText.trim() || busy}
+          onClick={doReplace}
+        >
+          {busy ? <Spinner size={12} /> : <CheckIco size={12} />}
+          Ganti di Seluruh Transkrip
+        </button>
+      </div>
+
+      {/* Words per group */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-[11.5px] text-muted">
+          <span>Daftar dialog ({groups.length} baris)</span>
+          <span className="text-[10.5px]">Klik kata untuk koreksi langsung</span>
+        </div>
+
+        {!groups.length ? (
+          <div className="text-muted text-center py-4 text-[12px] border border-dashed border-line rounded">
+            Tidak ada ucapan di rentang klip ini
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            {groups.map((g, gi) => {
+              const isEditingThisLine = editingLineIdx === gi;
+              return (
+                <div key={gi} className="p-2 rounded border border-line bg-panel2/60 hover:bg-panel2 transition">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-mono text-[10.5px] text-accent-300">
+                      {fmtTime(g.start)} – {fmtTime(g.end)}
+                    </span>
+                    <button
+                      className="text-[11px] text-muted hover:text-fg inline-flex items-center gap-1 px-1 rounded hover:bg-hover"
+                      onClick={() => isEditingThisLine ? commitLine(g) : startEditLine(gi, g)}
+                      title="Edit seluruh baris ini"
+                    >
+                      {isEditingThisLine ? <CheckIco size={11} className="text-emerald-500" /> : <Edit3 size={11} />}
+                      <span>{isEditingThisLine ? 'Selesai' : 'Edit baris'}</span>
+                    </button>
+                  </div>
+
+                  {isEditingThisLine ? (
+                    <div className="flex gap-1.5">
+                      <input
+                        className="input text-[12.5px] flex-1 font-medium"
+                        value={lineVal}
+                        onChange={(e) => setLineVal(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && commitLine(g)}
+                        autoFocus
+                      />
+                      <button className="btn-primary btn-sm px-2.5" onClick={() => commitLine(g)}>
+                        <CheckIco size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1 items-center">
+                      {g.words.map((w, wi) => {
+                        const isEditingThisWord = editingWordIdx === w.origIdx;
+                        if (isEditingThisWord) {
+                          return (
+                            <input
+                              key={wi}
+                              className="input text-[12px] h-6 px-1.5 w-24 font-semibold text-accent border-accent"
+                              value={wordVal}
+                              onChange={(e) => setWordVal(e.target.value)}
+                              onBlur={() => commitWord(w.origIdx)}
+                              onKeyDown={(e) => e.key === 'Enter' && commitWord(w.origIdx)}
+                              autoFocus
+                            />
+                          );
+                        }
+                        return (
+                          <button
+                            key={wi}
+                            onClick={() => startEditWord(w)}
+                            className="px-1.5 py-0.5 rounded text-[12px] bg-hover hover:bg-accent/20 hover:text-accent-300 transition text-fg2 font-medium"
+                            title="Klik untuk edit kata ini"
+                          >
+                            {w.rawW || w.w}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function TimeRow({ label, value, onSet, onPlayhead }) {
   const [txt, setTxt] = useState(value.toFixed(2));
@@ -52,10 +216,11 @@ function StyleCard({ id, active, onClick }) {
 
 const ApplyAll = ({ n, onClick }) => n > 1 ? <button className="text-[11px] text-accent-300 hover:underline inline-flex items-center gap-1" onClick={onClick}><Copy size={11} />Terapkan ke {n} terpilih</button> : null;
 
-export default function ClipPanel({ project, clip, patch, videoRef, onDelete, onAiTitle, aiBusy, openWebcam, onApplyAll, selectedCount, tab, setTab }) {
+export default function ClipPanel({ project, clip, patch, videoRef, onDelete, onAiTitle, aiBusy, openWebcam, onApplyAll, selectedCount, tab, setTab, groups = [], onUpdateWord, onUpdateSentence, onReplaceWords }) {
   const [title, setTitle] = useState(clip.title);
   const [desc, setDesc] = useState(clip.description || '');
   const [headline, setHeadline] = useState(clip.thumbHeadline || '');
+  const [subsMode, setSubsMode] = useState('style'); // 'style' | 'words'
   useEffect(() => { setTitle(clip.title); setDesc(clip.description || ''); setHeadline(clip.thumbHeadline || ''); }, [clip.id, clip.title, clip.description, clip.thumbHeadline]);
 
   const dur = project.video ? project.video.duration : 1e9;
@@ -99,7 +264,7 @@ export default function ClipPanel({ project, clip, patch, videoRef, onDelete, on
             </div>
             {clip.layout !== 'fit' && (
               <div>
-                <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Focus X (geser area crop)</span><span className="font-mono text-muted">{Math.round(clip.focusX * 100)}%</span></div>
+                <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Focus X (bisa juga digeser langsung di canvas)</span><span className="font-mono text-muted">{Math.round(clip.focusX * 100)}%</span></div>
                 <Slider value={clip.focusX * 100} onChange={(v) => patch({ focusX: v / 100 }, true)} onCommit={(v) => patch({ focusX: v / 100 })} />
               </div>
             )}
@@ -108,21 +273,47 @@ export default function ClipPanel({ project, clip, patch, videoRef, onDelete, on
         )}
 
         {tab === 'subs' && (
-          <Section title="Subtitle otomatis" right={<ApplyAll n={selectedCount} onClick={() => onApplyAll({ captionStyle: clip.captionStyle, captionPos: clip.captionPos, burnCaptions: clip.burnCaptions, wordsPerLine: clip.wordsPerLine })} />}>
+          <Section title="Subtitle" right={<ApplyAll n={selectedCount} onClick={() => onApplyAll({ captionStyle: clip.captionStyle, captionPos: clip.captionPos, burnCaptions: clip.burnCaptions, wordsPerLine: clip.wordsPerLine })} />}>
             <Toggle checked={clip.burnCaptions} onChange={(v) => patch({ burnCaptions: v })} label="Tampilkan subtitle (burn-in)" />
-            <div className={cx('grid grid-cols-2 gap-2 transition', !clip.burnCaptions && 'opacity-40 pointer-events-none')}>
-              {STYLE_IDS.map((id) => <StyleCard key={id} id={id} active={clip.captionStyle === id} onClick={() => patch({ captionStyle: id })} />)}
+
+            <div className="pt-1">
+              <Segmented
+                full
+                value={subsMode}
+                onChange={setSubsMode}
+                options={[
+                  { value: 'style', label: 'Gaya & Posisi' },
+                  { value: 'words', label: 'Koreksi Teks' },
+                ]}
+              />
             </div>
-            <div className={cx(!clip.burnCaptions && 'opacity-40 pointer-events-none', 'space-y-3')}>
-              <div>
-                <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Posisi vertikal</span><span className="font-mono text-muted">{Math.round(clip.captionPos)}%</span></div>
-                <Slider min={10} max={95} value={clip.captionPos} onChange={(v) => patch({ captionPos: v }, true)} onCommit={(v) => patch({ captionPos: v })} />
+
+            {subsMode === 'style' ? (
+              <div className={cx(!clip.burnCaptions && 'opacity-40 pointer-events-none', 'space-y-4 pt-1')}>
+                <div className="grid grid-cols-2 gap-2">
+                  {STYLE_IDS.map((id) => <StyleCard key={id} id={id} active={clip.captionStyle === id} onClick={() => patch({ captionStyle: id })} />)}
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Posisi vertikal (bisa juga digeser di canvas)</span><span className="font-mono text-muted">{Math.round(clip.captionPos)}%</span></div>
+                    <Slider min={10} max={95} value={clip.captionPos} onChange={(v) => patch({ captionPos: v }, true)} onCommit={(v) => patch({ captionPos: v })} />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Kata per baris</span><span className="font-mono text-muted">{clip.wordsPerLine || 3}</span></div>
+                    <Slider min={1} max={5} value={clip.wordsPerLine || 3} onChange={(v) => patch({ wordsPerLine: v }, true)} onCommit={(v) => patch({ wordsPerLine: v })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Kata per baris</span><span className="font-mono text-muted">{clip.wordsPerLine || 3}</span></div>
-                <Slider min={1} max={5} value={clip.wordsPerLine || 3} onChange={(v) => patch({ wordsPerLine: v }, true)} onCommit={(v) => patch({ wordsPerLine: v })} />
+            ) : (
+              <div className="pt-1">
+                <SubtitleWordEditor
+                  groups={groups}
+                  onUpdateWord={onUpdateWord}
+                  onUpdateSentence={onUpdateSentence}
+                  onReplaceWords={onReplaceWords}
+                />
               </div>
-            </div>
+            )}
           </Section>
         )}
 

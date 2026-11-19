@@ -119,11 +119,13 @@ export function mapWords(words, seq) {
   const out = [];
   for (const it of seq.items) {
     if (it.type !== 'src') continue;
-    for (const w of words || []) {
+    const arr = words || [];
+    for (let wi = 0; wi < arr.length; wi++) {
+      const w = arr[wi];
       if (w.e <= it.s || w.s >= it.e) continue;
       if (w.s < it.s - 0.15) continue; // word started before this piece (was cut)
       const s = Math.max(it.s, w.s); const e = Math.min(it.e, w.e);
-      out.push({ ...w, s: it.os + (s - it.s), e: it.os + (e - it.s) });
+      out.push({ ...w, origIdx: wi, rawW: w.w, s: it.os + (s - it.s), e: it.os + (e - it.s) });
     }
   }
   return out;

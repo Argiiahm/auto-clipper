@@ -28,7 +28,7 @@ export function groupWords(words, maxWords, maxChars) {
 export function buildGroups(words, clip) {
   const st = CAPTION_STYLES[clip.captionStyle] || CAPTION_STYLES.pop;
   const rel = (words || []).filter((w) => w.e > clip.start && w.s < clip.end)
-    .map((w) => ({ w: st.upper ? w.w.toUpperCase() : w.w, s: Math.max(0, w.s - clip.start), e: Math.min(clip.end, w.e) - clip.start }));
+    .map((w) => ({ ...w, origIdx: w.origIdx, rawW: w.rawW || w.w, w: st.upper ? w.w.toUpperCase() : w.w, s: Math.max(0, w.s - clip.start), e: Math.min(clip.end, w.e) - clip.start }));
   const wpl = clip.wordsPerLine || 3;
   const groups = groupWords(rel, st.clean ? Math.max(4, wpl * 2 + 1) : Math.max(1, wpl), st.clean ? 40 : (st.font === 'Bangers' ? 20 : 16));
   return groups.map((g, gi) => {
