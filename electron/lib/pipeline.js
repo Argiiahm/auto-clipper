@@ -164,7 +164,7 @@ const STEP_FN = {
         return {
           provider: 'gemini',
           apiKey: settings.keys.gemini,
-          model: settings.geminiSttModel || 'gemini-2.5-flash',
+          model: settings.geminiSttModel || 'gemini-3.8-flash',
         };
       }
       if (prov === 'openai') {

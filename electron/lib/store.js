@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS = {
   llmProvider: 'groq', // groq | gemini | openrouter | 9router | custom
   models: {
     groq: 'openai/gpt-oss-120b',
-    gemini: 'gemini-2.5-flash',
+    gemini: 'gemini-3.8-flash',
     openrouter: 'openrouter/free',
     '9router': '',
     custom: 'llama3.1',
@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS = {
   customBaseUrl: 'http://localhost:11434/v1',
   transcriber: 'groq', // groq | gemini | openai | 9router | custom | youtube
   whisperModel: 'whisper-large-v3-turbo',
-  geminiSttModel: 'gemini-2.5-flash',
+  geminiSttModel: 'gemini-3.8-flash',
   customSttUrl: 'http://localhost:20128/v1/audio/transcriptions',
   language: 'auto', // spoken language: auto | id | en | ...
   titleLanguage: 'auto', // language of clip titles: auto = same as video
@@ -88,6 +88,16 @@ function loadSettings() {
   let raw = {};
   try { raw = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); } catch (_) {}
   const s = deepMerge(DEFAULT_SETTINGS, raw);
+
+  // Auto-migrate deprecated Gemini models from saved settings
+  const deprecatedGemini = /^(gemini-2\.5-flash.*|gemini-1\.5-.*|gemini-2\.0-.*)$/i;
+  if (s.geminiSttModel && deprecatedGemini.test(s.geminiSttModel)) {
+    s.geminiSttModel = 'gemini-3.8-flash';
+  }
+  if (s.models && s.models.gemini && deprecatedGemini.test(s.models.gemini)) {
+    s.models.gemini = 'gemini-3.8-flash';
+  }
+
   s.keys = {};
   for (const k of KEY_NAMES) s.keys[k] = decodeKey((raw.keys || {})[k] || '');
   if (process.env.GROQ_API_KEY && !s.keys.groq) s.keys.groq = process.env.GROQ_API_KEY;

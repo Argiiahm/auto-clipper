@@ -11,7 +11,7 @@ const PROVIDERS = [
   { id: 'groq', name: 'Groq', note: 'Gratis · juga dipakai untuk Whisper', url: 'https://console.groq.com/keys',
     models: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'] },
   { id: 'gemini', name: 'Google Gemini', note: 'Free tier · context 1M token', url: 'https://aistudio.google.com/apikey',
-    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'] },
+    models: ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-flash-latest'] },
   { id: 'openrouter', name: 'OpenRouter', note: 'Model :free · 50 request/hari', url: 'https://openrouter.ai/keys',
     models: ['openrouter/free', 'nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free'] },
   { id: '9router', name: '9Router', note: 'AI Routing Proxy (port 20128)', url: 'http://localhost:20128',
@@ -165,7 +165,7 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
 
             {s.transcriber === 'gemini' && (<>
               <Field label="Model Gemini STT">
-                <Segmented size="md" value={s.geminiSttModel || 'gemini-2.5-flash'} onChange={(v) => set({ geminiSttModel: v })} options={[{ value: 'gemini-2.5-flash', label: 'gemini-2.5-flash (terbaru & cepat)' }, { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash' }]} />
+                <Segmented size="md" value={s.geminiSttModel || 'gemini-3.8-flash'} onChange={(v) => set({ geminiSttModel: v })} options={[{ value: 'gemini-3.8-flash', label: 'gemini-3.8-flash (terbaru & cepat)' }, { value: 'gemini-3.8-flash-lite', label: 'gemini-3.8-flash-lite' }, { value: 'gemini-flash-latest', label: 'gemini-flash-latest' }]} />
               </Field>
               <Field label="API key Google Gemini" hint="Menggunakan API key Gemini yang sama dengan tab AI (gratis di aistudio.google.com).">
                 <KeyInput value={s.keys.gemini} onChange={(v) => setKey('gemini', v)} placeholder="AIzaSy…" />

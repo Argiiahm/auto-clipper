@@ -59,11 +59,14 @@ async function whisperTranscribeChunk(chunk, { endpoint, apiKey, model, language
 /**
  * Google Gemini multimodal audio transcription (Free, accurate, multilingual).
  */
-async function geminiTranscribeChunk(chunk, { apiKey, model = 'gemini-2.5-flash', language, onWait, signal }) {
+async function geminiTranscribeChunk(chunk, { apiKey, model = 'gemini-3.8-flash', language, onWait, signal }) {
   if (!apiKey) throw new Error('API key Google Gemini belum diisi. Buka Settings.');
+  const resolvedModel = (!model || /^(gemini-2\.5-flash.*|gemini-1\.5-.*|gemini-2\.0-.*)$/i.test(model))
+    ? 'gemini-3.8-flash'
+    : model;
   const buf = fs.readFileSync(chunk.file);
   const b64 = buf.toString('base64');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${apiKey}`;
 
   const langInstruction = language && language !== 'auto' ? ` The spoken audio is in ${language}.` : '';
   const prompt = `Transcribe this audio recording accurately.${langInstruction}
@@ -180,7 +183,7 @@ async function transcribe(chunks, opts = {}, onProgress) {
     if (provider === 'gemini') {
       r = await geminiTranscribeChunk(chunks[i], {
         apiKey,
-        model: model || 'gemini-2.5-flash',
+        model: model || 'gemini-3.8-flash',
         language,
         onWait: (sec, why) => onProgress && onProgress(i / chunks.length, `Menunggu ${why} Gemini (${Math.round(sec)} dtk)…`),
         signal,
