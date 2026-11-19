@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production / Build Outputs
+dist/
+dist-ssr/
+release/
+out/
+build/win-unpacked/
+
+# Downloaded External Binaries (yt-dlp, ffmpeg, ffprobe, DLLs)
+# Didownload via script: npm run fetch-bins
+resources/bin-win/*
+!resources/bin-win/.gitkeep
+resources/bin-*/*
+!resources/bin-*/.gitkeep
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# Runtime & Temporary Data
+.autoclipper/
+temp/
+tmp/
+*.tmp
+
+# IDE / Editor Files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/

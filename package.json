@@ -1,0 +1,86 @@
+{
+  "name": "autoclipper",
+  "productName": "AutoClipper",
+  "version": "1.1.0",
+  "description": "AutoClipper - YouTube link to viral short clips (Groq / free LLM)",
+  "author": "AutoClipper",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "build:ui": "vite build",
+    "start": "vite build && electron .",
+    "fetch-bins": "node scripts/fetch-win-bins.js",
+    "dist:win": "vite build && electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.autoclipper.app",
+    "productName": "AutoClipper",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/bin-win",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/fonts",
+        "to": "fonts",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "AutoClipper",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "AutoClipper-Setup-${version}.exe"
+    },
+    "afterPack": "build/afterPack.cjs",
+    "compression": "normal",
+    "electronLanguages": [
+      "en-US",
+      "id"
+    ]
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.2",
+    "electron": "^38.8.6",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.33",
+    "resedit": "^2.0.3",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.4.21",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^1.75.0"
+  },
+  "dependencies": {},
+  "type": "commonjs"
+}
