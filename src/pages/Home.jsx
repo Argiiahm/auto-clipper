@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Link2, Upload, Settings as Cog, Trash2, Film, KeyRound, ArrowUp,
-  MonitorPlay, FolderOpen, Search, Home as HomeIcon, Sparkles, Flame, Laugh,
-  Lightbulb, Zap, BookOpen, Mic, X, ChevronDown, Check, HelpCircle
+  MonitorPlay, FolderOpen, Search, Home as HomeIcon, Flame, Laugh,
+  Lightbulb, Zap, BookOpen, Mic, X, ChevronDown, Check, SlidersHorizontal
 } from 'lucide-react';
 import { api, call, fileUrl } from '../lib/api';
 import { fmtDur, timeAgo, cx } from '../lib/format';
@@ -19,7 +19,7 @@ const TEMPLATE_ICONS = {
   debate: Zap,
   story: BookOpen,
   podcast_gold: Mic,
-  custom: Sparkles,
+  custom: SlidersHorizontal,
 };
 
 function statusOf(p) {
@@ -115,7 +115,7 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
   }, [projects, q]);
 
   const curTpl = getTemplate(promptTemplate);
-  const CurTplIcon = TEMPLATE_ICONS[promptTemplate] || Sparkles;
+  const CurTplIcon = TEMPLATE_ICONS[promptTemplate] || SlidersHorizontal;
 
   return (
     <div className="h-full flex bg-bg">
@@ -158,34 +158,29 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
         </div>
       </aside>
 
-      {/* Main Content: Claude.ai Chatbot Style */}
+      {/* Main Content */}
       <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="max-w-[880px] mx-auto px-6 py-10 sm:py-14 space-y-8">
+        <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
           
-          {/* Claude Hero Greeting */}
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-accent/25 via-accent/10 to-amber-500/15 border border-line shadow-xs mb-1">
-              <Sparkles size={22} className="text-accent" />
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-fg tracking-tight">
-              Mau klip video apa hari ini?
+          {/* Clean Left-Aligned Header */}
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-fg tracking-tight">
+              Buat Klip Baru
             </h1>
-            <p className="text-[13px] text-muted max-w-md mx-auto">
-              Tempel tautan video atau impor file lokal. AI akan otomatis mentranskrip, mencari momen terbaik, dan membuat klip siap posting.
+            <p className="text-[13px] text-muted">
+              Tempel URL video online atau pilih file video lokal untuk diekstrak menjadi klip shorts/reels secara otomatis.
             </p>
           </div>
 
-          {/* Claude-style Main Input Container */}
-          <div className="relative rounded-2xl border border-line bg-panel shadow-sm hover:border-accent/40 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 transition-all p-3.5 sm:p-4 space-y-3">
+          {/* Spacious Card Input Container */}
+          <div className="rounded-xl border border-line bg-panel shadow-sm hover:border-line/90 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20 transition-all p-4 space-y-3">
             
-            {/* Main Video URL Input */}
+            {/* Video URL Input Row */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-panel2 border border-line flex items-center justify-center text-muted shrink-0">
-                <Link2 size={16} />
-              </div>
+              <Link2 size={18} className="text-muted shrink-0 ml-1" />
               <input
                 type="text"
-                className="flex-1 bg-transparent outline-none text-[14px] text-fg placeholder:text-faint font-normal"
+                className="flex-1 bg-transparent outline-none text-[15px] text-fg placeholder:text-faint font-normal"
                 placeholder="Tempel link video YouTube, TikTok, Twitch VOD, podcast..."
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -196,21 +191,21 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                 <button
                   type="button"
                   onClick={() => setUrl('')}
-                  className="w-6 h-6 rounded-full hover:bg-hover text-muted hover:text-fg flex items-center justify-center transition"
+                  className="w-7 h-7 rounded-md hover:bg-hover text-muted hover:text-fg flex items-center justify-center transition"
                   title="Hapus tautan"
                 >
-                  <X size={14} />
+                  <X size={15} />
                 </button>
               )}
             </div>
 
-            {/* Custom Prompt Input Row */}
-            <div className="flex items-center gap-2.5 px-1 pt-2.5 border-t border-line/50 text-[12.5px]">
-              <Sparkles size={14} className="text-accent shrink-0" />
+            {/* Prompt Input Row */}
+            <div className="flex items-center gap-2.5 px-1 pt-2.5 border-t border-line/60 text-[13px]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted shrink-0">Prompt</span>
               <input
                 type="text"
-                className="flex-1 bg-transparent outline-none text-[12.5px] text-fg placeholder:text-faint"
-                placeholder={curTpl.placeholder || "Instruksi prompt (opsional: misal cari momen blunder, jokes, pas bahas X...)"}
+                className="flex-1 bg-transparent outline-none text-[13px] text-fg placeholder:text-faint"
+                placeholder={curTpl.placeholder || "Instruksi khusus pencarian highlight (opsional)..."}
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
@@ -218,7 +213,7 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
             </div>
 
             {/* Bottom Toolbar: Template Picker, Local Video Button, & Submit */}
-            <div className="flex items-center justify-between pt-2.5 border-t border-line/60">
+            <div className="flex items-center justify-between pt-3 border-t border-line/60 gap-3 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 
                 {/* Template Selector Button with Dropdown */}
@@ -226,22 +221,22 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                   <button
                     type="button"
                     onClick={() => setShowTplMenu(!showTplMenu)}
-                    className="h-8 px-2.5 rounded-lg bg-panel2 hover:bg-hover border border-line text-[12px] font-medium text-fg flex items-center gap-1.5 transition select-none"
+                    className="h-8.5 px-3 rounded-lg bg-panel2 hover:bg-hover border border-line text-[12.5px] font-medium text-fg flex items-center gap-2 transition select-none"
                     title="Pilih fokus tema klip"
                   >
-                    <CurTplIcon size={13} className="text-accent" />
-                    <span>{curTpl.label}</span>
-                    <ChevronDown size={12} className="text-muted ml-0.5" />
+                    <CurTplIcon size={14} className="text-accent" />
+                    <span>Fokus: {curTpl.label}</span>
+                    <ChevronDown size={13} className="text-muted" />
                   </button>
 
                   {/* Dropdown Menu */}
                   {showTplMenu && (
-                    <div className="absolute left-0 bottom-full mb-1.5 w-64 p-1.5 rounded-xl bg-panel border border-line shadow-xl z-30 space-y-1 fade-in">
-                      <div className="px-2 py-1 text-[11px] font-semibold text-muted uppercase tracking-wider">
-                        Pilih Gaya & Tema Klip
+                    <div className="absolute left-0 bottom-full mb-1.5 w-72 p-1.5 rounded-xl bg-panel border border-line shadow-xl z-30 space-y-1">
+                      <div className="px-2.5 py-1 text-[11px] font-semibold text-muted uppercase tracking-wider">
+                        Kategori Fokus Klip
                       </div>
                       {PROMPT_TEMPLATES.map((t) => {
-                        const Icon = TEMPLATE_ICONS[t.id] || Sparkles;
+                        const Icon = TEMPLATE_ICONS[t.id] || SlidersHorizontal;
                         const active = promptTemplate === t.id;
                         return (
                           <button
@@ -252,7 +247,7 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                               setShowTplMenu(false);
                             }}
                             className={cx(
-                              'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-[12px] transition',
+                              'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-[12.5px] transition',
                               active ? 'bg-accent/15 text-accent-text font-semibold' : 'hover:bg-hover text-fg'
                             )}
                           >
@@ -261,7 +256,7 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="leading-tight truncate">{t.label}</div>
-                              <div className="text-[10px] text-muted truncate">{t.badge}</div>
+                              <div className="text-[11px] text-muted truncate">{t.desc}</div>
                             </div>
                             {active && <Check size={14} className="text-accent ml-auto shrink-0" />}
                           </button>
@@ -276,32 +271,42 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                   type="button"
                   onClick={importLocal}
                   disabled={busy}
-                  className="h-8 px-2.5 rounded-lg bg-panel2 hover:bg-hover border border-line text-[12px] font-medium text-fg flex items-center gap-1.5 transition disabled:opacity-40"
+                  className="h-8.5 px-3 rounded-lg bg-panel2 hover:bg-hover border border-line text-[12.5px] font-medium text-fg flex items-center gap-1.5 transition disabled:opacity-40"
                   title="Pilih video dari file lokal komputer Anda"
                 >
-                  <Upload size={13} className="text-accent" />
-                  <span>Impor video lokal</span>
+                  <Upload size={14} className="text-muted" />
+                  <span>Impor file lokal</span>
                 </button>
               </div>
 
-              {/* Claude-style Circular Submit Button */}
+              {/* Action Submit Button */}
               <button
                 type="button"
-                className="w-9 h-9 rounded-full bg-accent hover:opacity-90 text-onaccent flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed shadow-sm shrink-0"
+                className="h-9 px-4 rounded-lg bg-accent hover:opacity-90 text-onaccent font-medium text-[13px] flex items-center gap-2 transition disabled:opacity-30 disabled:cursor-not-allowed shadow-sm shrink-0"
                 disabled={busy || !url.trim()}
                 onClick={submit}
                 title="Mulai proses klip"
               >
-                {busy ? <Spinner size={14} /> : <ArrowUp size={16} />}
+                {busy ? (
+                  <>
+                    <Spinner size={14} />
+                    <span>Memproses...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Proses Video</span>
+                    <ArrowUp size={15} />
+                  </>
+                )}
               </button>
             </div>
           </div>
 
-          {/* Claude-style Quick Preset Chips */}
-          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-            <span className="text-[11.5px] text-muted mr-1">Fokus Klip:</span>
+          {/* Quick Preset Chips (Left Aligned, Clean & Subtle) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] text-muted font-medium mr-1">Preset:</span>
             {PROMPT_TEMPLATES.map((t) => {
-              const Icon = TEMPLATE_ICONS[t.id] || Sparkles;
+              const Icon = TEMPLATE_ICONS[t.id] || SlidersHorizontal;
               const active = promptTemplate === t.id;
               return (
                 <button
@@ -309,10 +314,10 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                   type="button"
                   onClick={() => setPromptTemplate(t.id)}
                   className={cx(
-                    'h-7 px-3 rounded-full text-[11.5px] border transition-all inline-flex items-center gap-1.5 select-none',
+                    'h-7 px-2.5 rounded-lg text-[12px] border transition-all inline-flex items-center gap-1.5 select-none',
                     active
-                      ? 'bg-accent/15 border-accent text-accent-text font-semibold shadow-xs'
-                      : 'bg-panel border-line text-muted hover:text-fg hover:border-faint'
+                      ? 'bg-accent/15 border-accent/70 text-accent-text font-semibold shadow-xs'
+                      : 'bg-panel border-line text-muted hover:text-fg hover:border-line/90'
                   )}
                 >
                   <Icon size={12} className={active ? 'text-accent' : 'text-muted'} />
@@ -320,15 +325,6 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                 </button>
               );
             })}
-          </div>
-
-          {/* Active Template Explanation Card */}
-          <div className="px-3.5 py-2.5 rounded-xl bg-panel border border-line text-[12px] text-muted flex items-center gap-2.5">
-            <HelpCircle size={15} className="text-accent shrink-0" />
-            <div className="flex-1 leading-snug">
-              <span className="font-semibold text-fg">{curTpl.label}: </span>
-              {curTpl.desc}
-            </div>
           </div>
 
           {/* Warning Banner if API Key is missing */}
@@ -339,19 +335,19 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
             >
               <KeyRound size={16} className="text-amber-500 shrink-0" />
               <div className="flex-1 text-[12.5px]">
-                <b>API key belum diisi.</b> Masukkan Groq API key (gratis di console.groq.com/keys) atau Gemini API key di Pengaturan agar proses transkrip dan highlight berjalan lancar.
+                <b>API key belum diisi.</b> Masukkan Groq API key atau Gemini API key di Pengaturan agar proses transkrip dan highlight berjalan lancar.
               </div>
               <ChevronDown size={14} className="-rotate-90 text-amber-500" />
             </button>
           )}
 
-          {/* Recent Projects Section (Daftar Proyek di Bawahnya) */}
-          <div className="pt-6 border-t border-line space-y-4">
+          {/* Recent Projects Section */}
+          <div className="pt-4 border-t border-line space-y-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <h2 className="text-[15px] font-bold text-fg tracking-tight">Proyek Terbaru</h2>
-                <p className="text-[12px] text-muted">
-                  Koleksi video dan klip yang pernah Anda proses ({projects.length})
+                <h2 className="text-[16px] font-bold text-fg tracking-tight">Proyek Terbaru</h2>
+                <p className="text-[12.5px] text-muted">
+                  Daftar video yang telah diproses ({projects.length})
                 </p>
               </div>
 
@@ -375,12 +371,12 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
 
             {/* Project Grid / Empty State */}
             {shown.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-line py-16 text-center text-muted text-[12.5px] bg-panel/30">
+              <div className="rounded-xl border border-dashed border-line py-16 text-center text-muted text-[12.5px] bg-panel/30">
                 <Film className="mx-auto mb-3 opacity-40" size={28} />
-                {projects.length ? 'Tidak ada proyek yang sesuai dengan pencarian.' : 'Belum ada proyek. Mulai dengan menempel tautan video di atas!'}
+                {projects.length ? 'Tidak ada proyek yang sesuai dengan pencarian.' : 'Belum ada proyek. Mulai dengan memasukkan link video atau impor file lokal di atas.'}
               </div>
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                 {shown.map((p) => {
                   const st = statusOf(p);
                   const tpl = p.promptTemplate ? getTemplate(p.promptTemplate) : null;
@@ -447,7 +443,7 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                         {/* Badges footer */}
                         <div className="pt-1 flex items-center gap-1.5 flex-wrap">
                           {tpl && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-panel2 border border-line text-muted font-medium">
+                            <span className="text-[10.5px] px-2 py-0.5 rounded-md bg-panel2 border border-line text-muted font-medium">
                               {tpl.label}
                             </span>
                           )}
