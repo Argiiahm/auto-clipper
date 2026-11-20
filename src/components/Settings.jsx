@@ -236,6 +236,18 @@ export default function Settings({ open, onClose, settings, save, initialTab }) 
               <Field label="Gaya caption">
                 <select className="input" value={s.defaults.captionStyle} onChange={(e) => setDef({ captionStyle: e.target.value })}>{Object.entries(CAPTION_STYLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
               </Field>
+              <Field label="Animasi saat suara aktif">
+                <select className="input" value={s.defaults.captionAnimation || 'pop'} onChange={(e) => setDef({ captionAnimation: e.target.value })}>
+                  <option value="pop">Pop Bounce (Default)</option>
+                  <option value="pulse">Pulse</option>
+                  <option value="jump">Jump</option>
+                  <option value="highlight">Highlight</option>
+                  <option value="none">Statis (Tanpa Animasi)</option>
+                </select>
+              </Field>
+              <Field label={`Jarak antar huruf: ${s.defaults.letterSpacing ?? 0}px`}><input type="range" className="w-full range-fill" style={{ '--p': `${(((s.defaults.letterSpacing ?? 0) + 2) / 18) * 100}%` }} min={-2} max={16} value={s.defaults.letterSpacing ?? 0} onChange={(e) => setDef({ letterSpacing: +e.target.value })} /></Field>
+              <Field label={`Jarak antar kata: ${s.defaults.wordSpacing ?? 0}px`}><input type="range" className="w-full range-fill" style={{ '--p': `${((s.defaults.wordSpacing ?? 0) / 30) * 100}%` }} min={0} max={30} step={2} value={s.defaults.wordSpacing ?? 0} onChange={(e) => setDef({ wordSpacing: +e.target.value })} /></Field>
+              <Field label={`Jarak antar baris: ${(s.defaults.lineHeight ?? 1.2).toFixed(2)}x`}><input type="range" className="w-full range-fill" style={{ '--p': `${(((s.defaults.lineHeight ?? 1.2) - 1.0) / 0.8) * 100}%` }} min={1.0} max={1.8} step={0.05} value={s.defaults.lineHeight ?? 1.2} onChange={(e) => setDef({ lineHeight: +e.target.value })} /></Field>
               <Field label={`Posisi caption vertikal: ${s.defaults.captionPos}%`}><input type="range" className="w-full range-fill" style={{ '--p': `${s.defaults.captionPos}%` }} min={10} max={95} value={s.defaults.captionPos} onChange={(e) => setDef({ captionPos: +e.target.value })} /></Field>
               <Field label={`Kata per baris: ${s.defaults.wordsPerLine}`}><input type="range" className="w-full range-fill" style={{ '--p': `${((s.defaults.wordsPerLine - 1) / 4) * 100}%` }} min={1} max={5} value={s.defaults.wordsPerLine} onChange={(e) => setDef({ wordsPerLine: +e.target.value })} /></Field>
               <Field label={`Tinggi webcam (layout Split): ${s.defaults.splitRatio}%`}><input type="range" className="w-full range-fill" style={{ '--p': `${((s.defaults.splitRatio - 25) / 40) * 100}%` }} min={25} max={65} value={s.defaults.splitRatio} onChange={(e) => setDef({ splitRatio: +e.target.value })} /></Field>

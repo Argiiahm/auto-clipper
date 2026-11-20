@@ -12,6 +12,7 @@ function CaptionOverlay({ clip, groups, t, scale, isSelected, onDown, onDoubleCl
   const a = activeAt(groups, t);
   if (!a || !clip || !clip.burnCaptions) return null;
   const isClean = clip.captionStyle === 'clean';
+  const anim = clip.captionAnimation || 'pop';
 
   return (
     <div className="absolute left-0 top-0 pointer-events-none" style={{ width: 1080, height: 1920, transform: `scale(${scale})`, transformOrigin: '0 0' }}>
@@ -27,12 +28,30 @@ function CaptionOverlay({ clip, groups, t, scale, isSelected, onDown, onDoubleCl
         onDoubleClick={onDoubleClick}
         title="Klik & drag untuk menggeser posisi subtitle vertikal · Dobel klik untuk edit kata"
       >
-        <div style={containerStyle(clip.captionStyle)}>
-          {a.group.words.map((w, i) => (
-            <React.Fragment key={i}>
-              <span className="cap-word" style={wordStyle(clip.captionStyle, !isClean && i === a.ai)}>{w.w}</span>{i < a.group.words.length - 1 ? ' ' : ''}
-            </React.Fragment>
-          ))}
+        <div style={containerStyle(clip.captionStyle, { letterSpacing: clip.letterSpacing, lineHeight: clip.lineHeight, wordSpacing: clip.wordSpacing })}>
+          {a.group.words.map((w, i) => {
+            const isCur = i === a.ai;
+            const isAct = !isClean && isCur;
+            const isSpeaking = isAct && a.isSpeaking;
+            const animClass = isSpeaking
+              ? (anim === 'jump' ? 'cap-word-jump' : anim === 'pulse' ? 'cap-word-pulse' : anim === 'fade' ? 'cap-word-fade' : anim === 'highlight' || anim === 'none' ? '' : 'cap-word-pop')
+              : 'cap-word-resting';
+            return (
+              <React.Fragment key={i}>
+                <span
+                  key={`${i}-${isSpeaking}`}
+                  className={cx('cap-word', animClass)}
+                  style={{
+                    ...wordStyle(clip.captionStyle, isAct, isSpeaking, anim),
+                    marginRight: (clip.wordSpacing || 0) > 0 ? `${clip.wordSpacing}px` : undefined,
+                  }}
+                >
+                  {w.w}
+                </span>
+                {i < a.group.words.length - 1 ? ' ' : ''}
+              </React.Fragment>
+            );
+          })}
         </div>
 
         {/* Canva-style Subtitle Badge */}

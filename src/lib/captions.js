@@ -41,9 +41,20 @@ export function activeAt(groups, t) {
   if (!groups || !Array.isArray(groups)) return null;
   for (const g of groups) {
     if (t >= g.start && t < g.end) {
-      let ai = 0;
-      for (let i = 0; i < (g.words || []).length; i++) if (t >= (i === 0 ? g.start : g.words[i].s)) ai = i;
-      return { group: g, ai };
+      let ai = -1;
+      let isSpeaking = false;
+      for (let i = 0; i < (g.words || []).length; i++) {
+        const w = g.words[i];
+        const wEnd = Math.max(w.s + 0.12, w.e);
+        if (t >= w.s && t <= wEnd + 0.1) {
+          ai = i;
+          isSpeaking = true;
+          break;
+        } else if (t >= w.s) {
+          ai = i;
+        }
+      }
+      return { group: g, ai, isSpeaking };
     }
   }
   return null;
@@ -57,12 +68,24 @@ const strokeShadow = (color, px) => {
 };
 
 /** Inline style for the caption container (in 1080-space px). */
-export function containerStyle(styleId) {
+export function containerStyle(styleId, custom = {}) {
   const st = CAPTION_STYLES[styleId] || CAPTION_STYLES.pop;
-  return { fontFamily: st.font, fontWeight: st.weight, fontSize: st.size * st.k, letterSpacing: st.spacing || 0, lineHeight: 1.18, color: st.color, textAlign: 'center' };
+  const letterSpacing = custom.letterSpacing !== undefined && custom.letterSpacing !== null ? custom.letterSpacing : (st.spacing || 0);
+  const lineHeight = custom.lineHeight !== undefined && custom.lineHeight !== null ? custom.lineHeight : 1.18;
+  const wordSpacing = custom.wordSpacing !== undefined && custom.wordSpacing !== null ? custom.wordSpacing : 0;
+  return {
+    fontFamily: st.font,
+    fontWeight: st.weight,
+    fontSize: st.size * st.k,
+    letterSpacing: `${letterSpacing}px`,
+    lineHeight: lineHeight,
+    wordSpacing: `${wordSpacing}px`,
+    color: st.color,
+    textAlign: 'center',
+  };
 }
 
-export function wordStyle(styleId, isActive) {
+export function wordStyle(styleId, isActive, isSpeaking = false, animation = 'pop') {
   const st = CAPTION_STYLES[styleId] || CAPTION_STYLES.pop;
   const s = { color: st.color };
   let shadows = strokeShadow(st.stroke, st.bord);
@@ -76,8 +99,14 @@ export function wordStyle(styleId, isActive) {
   } else if (styleId === 'focus') {
     if (!isActive) { s.color = 'rgba(255,255,255,0.4)'; shadows = strokeShadow('rgba(0,0,0,0.32)', st.bord); }
   } else if (st.active && isActive) {
-    s.color = st.active; if (st.scale) s.transform = `scale(${st.scale})`;
+    s.color = st.active;
   }
+
+  // When active during silence pause, keep calm scale without aggressive pop
+  if (isActive && !isSpeaking && animation !== 'highlight' && animation !== 'none' && st.scale) {
+    s.transform = 'scale(1.04)';
+  }
+
   s.textShadow = shadows.join(',');
   return s;
 }

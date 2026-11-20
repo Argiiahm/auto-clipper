@@ -44,7 +44,10 @@ function newClip(c, defaults) {
     id: uid(), start: c.start, end: c.end, title: c.title || 'Klip baru', description: c.description || '', hook: c.hook || c.title || '',
     score: c.score ?? null, source: c.source || 'llm', selected: true,
     layout: defaults.layout || 'fill', focusX: 0.5, captionStyle: defaults.captionStyle || 'pop', burnCaptions: defaults.burnCaptions !== false,
-    captionPos: defaults.captionPos ?? 75, wordsPerLine: defaults.wordsPerLine || 3, thumbHeadline: (c.hook || c.title || '').slice(0, 120),
+    captionPos: defaults.captionPos ?? 75, wordsPerLine: defaults.wordsPerLine || 3,
+    letterSpacing: defaults.letterSpacing ?? 0, wordSpacing: defaults.wordSpacing ?? 0, lineHeight: defaults.lineHeight ?? 1.2,
+    captionAnimation: defaults.captionAnimation || 'pop',
+    thumbHeadline: (c.hook || c.title || '').slice(0, 120),
     render: null,
   };
 }
@@ -332,7 +335,18 @@ async function renderClips(id, clipIds, rastersMap) {
           if (!seq.items.length || seq.total < 0.2) throw new Error('Timeline kosong');
           const ed = seqLib.getEdit(clip);
           const words = seqLib.mapWords(t.words, seq);
-          const assText = clip.burnCaptions && words.length ? buildAss({ words, clipStart: 0, clipEnd: seq.total, styleId: clip.captionStyle, posPct: clip.captionPos, wordsPerLine: clip.wordsPerLine || 3 }) : null;
+          const assText = clip.burnCaptions && words.length ? buildAss({
+            words,
+            clipStart: 0,
+            clipEnd: seq.total,
+            styleId: clip.captionStyle,
+            posPct: clip.captionPos,
+            wordsPerLine: clip.wordsPerLine || 3,
+            letterSpacing: clip.letterSpacing,
+            wordSpacing: clip.wordSpacing,
+            lineHeight: clip.lineHeight,
+            animation: clip.captionAnimation || 'pop',
+          }) : null;
           const assets = {};
           for (const a of p.assets || []) assets[a.id] = a;
           const mus = ed.music && ed.music.asset && assets[ed.music.asset] ? { ...ed.music, rel: assets[ed.music.asset].rel } : null;
@@ -343,7 +357,18 @@ async function renderClips(id, clipIds, rastersMap) {
             onProgress: (f, d) => emit('render:progress', { id, clipId: cid, progress: f, detail: d }),
           });
         } else {
-          const assText = clip.burnCaptions && t.words.length ? buildAss({ words: t.words, clipStart: clip.start, clipEnd: clip.end, styleId: clip.captionStyle, posPct: clip.captionPos, wordsPerLine: clip.wordsPerLine || 3 }) : null;
+          const assText = clip.burnCaptions && t.words.length ? buildAss({
+            words: t.words,
+            clipStart: clip.start,
+            clipEnd: clip.end,
+            styleId: clip.captionStyle,
+            posPct: clip.captionPos,
+            wordsPerLine: clip.wordsPerLine || 3,
+            letterSpacing: clip.letterSpacing,
+            wordSpacing: clip.wordSpacing,
+            lineHeight: clip.lineHeight,
+            animation: clip.captionAnimation || 'pop',
+          }) : null;
           out = await renderClip({
             projectDir: p.dir, srcRel: p.video.path, video: p.video, clip: { ...clip, layout }, webcam: p.webcam, assText, outRel,
             encoder: settings.encoder, quality: settings.quality, splitRatio: (settings.defaults || {}).splitRatio || 42, jobKey: 'render:' + id,

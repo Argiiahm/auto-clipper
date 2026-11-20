@@ -38,6 +38,10 @@ const DEFAULT_SETTINGS = {
     burnCaptions: true,
     captionPos: 75,
     wordsPerLine: 3,
+    letterSpacing: 0,
+    wordSpacing: 0,
+    lineHeight: 1.2,
+    captionAnimation: 'pop', // pop | pulse | jump | highlight | none
     splitRatio: 42,
   },
   watermark: {

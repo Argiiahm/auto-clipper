@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Minus, Plus, Trash2, Sparkles, Crosshair, Copy, Webcam, Edit3, Check as CheckIco, Replace, Type, Search } from 'lucide-react';
+import { Minus, Plus, Trash2, Sparkles, Crosshair, Copy, Webcam, Edit3, Check as CheckIco, Replace, Type, Search, SlidersHorizontal } from 'lucide-react';
 import { Check, Slider, Spinner, Tabs, Section, Toggle, Segmented } from './ui.jsx';
 import { CAPTION_STYLES, STYLE_IDS, containerStyle, wordStyle } from '../lib/captions';
 import { cx, fmtTime, scoreColor } from '../lib/format';
@@ -273,7 +273,7 @@ export default function ClipPanel({ project, clip, patch, videoRef, onDelete, on
         )}
 
         {tab === 'subs' && (
-          <Section title="Subtitle" right={<ApplyAll n={selectedCount} onClick={() => onApplyAll({ captionStyle: clip.captionStyle, captionPos: clip.captionPos, burnCaptions: clip.burnCaptions, wordsPerLine: clip.wordsPerLine })} />}>
+          <Section title="Subtitle" right={<ApplyAll n={selectedCount} onClick={() => onApplyAll({ captionStyle: clip.captionStyle, captionPos: clip.captionPos, burnCaptions: clip.burnCaptions, wordsPerLine: clip.wordsPerLine, letterSpacing: clip.letterSpacing, wordSpacing: clip.wordSpacing, lineHeight: clip.lineHeight, captionAnimation: clip.captionAnimation })} />}>
             <Toggle checked={clip.burnCaptions} onChange={(v) => patch({ burnCaptions: v })} label="Tampilkan subtitle (burn-in)" />
 
             <div className="pt-1">
@@ -301,6 +301,59 @@ export default function ClipPanel({ project, clip, patch, videoRef, onDelete, on
                   <div>
                     <div className="flex justify-between text-[12px] text-fg2 mb-1.5"><span>Kata per baris</span><span className="font-mono text-muted">{clip.wordsPerLine || 3}</span></div>
                     <Slider min={1} max={5} value={clip.wordsPerLine || 3} onChange={(v) => patch({ wordsPerLine: v }, true)} onCommit={(v) => patch({ wordsPerLine: v })} />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[12px] text-fg2 mb-1.5">
+                      <span className="flex items-center gap-1 font-medium">
+                        <Sparkles size={12} className="text-violet-400" />
+                        Animasi saat ada suara
+                      </span>
+                    </div>
+                    <Segmented
+                      full
+                      size="sm"
+                      value={clip.captionAnimation || 'pop'}
+                      onChange={(v) => patch({ captionAnimation: v })}
+                      options={[
+                        { value: 'pop', label: 'Pop Bounce' },
+                        { value: 'pulse', label: 'Pulse' },
+                        { value: 'jump', label: 'Jump' },
+                        { value: 'highlight', label: 'Highlight' },
+                        { value: 'none', label: 'Statis' },
+                      ]}
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-line/60 space-y-3">
+                    <div className="text-[11.5px] font-semibold text-fg flex items-center gap-1.5">
+                      <SlidersHorizontal size={13} className="text-violet-400" />
+                      <span>Jarak Antar Teks</span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[12px] text-fg2 mb-1.5">
+                        <span>Jarak Antar Huruf (Letter Spacing)</span>
+                        <span className="font-mono text-muted">{clip.letterSpacing ?? 0}px</span>
+                      </div>
+                      <Slider min={-2} max={16} step={1} value={clip.letterSpacing ?? 0} onChange={(v) => patch({ letterSpacing: v }, true)} onCommit={(v) => patch({ letterSpacing: v })} />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[12px] text-fg2 mb-1.5">
+                        <span>Jarak Antar Kata (Word Spacing)</span>
+                        <span className="font-mono text-muted">{clip.wordSpacing ?? 0}px</span>
+                      </div>
+                      <Slider min={0} max={30} step={2} value={clip.wordSpacing ?? 0} onChange={(v) => patch({ wordSpacing: v }, true)} onCommit={(v) => patch({ wordSpacing: v })} />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[12px] text-fg2 mb-1.5">
+                        <span>Jarak Antar Baris (Line Spacing)</span>
+                        <span className="font-mono text-muted">{(clip.lineHeight ?? 1.2).toFixed(2)}x</span>
+                      </div>
+                      <Slider min={1.0} max={1.8} step={0.05} value={clip.lineHeight ?? 1.2} onChange={(v) => patch({ lineHeight: +v.toFixed(2) }, true)} onCommit={(v) => patch({ lineHeight: +v.toFixed(2) })} />
+                    </div>
                   </div>
                 </div>
               </div>
