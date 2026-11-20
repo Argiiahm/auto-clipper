@@ -1,5 +1,6 @@
 const { fetchRetry } = require('./http');
 const { transcriptToText, fmt } = require('./transcribe');
+const { getTemplate, PROMPT_TEMPLATES } = require('./templates');
 
 const PROVIDERS = {
   groq: { name: 'Groq', base: 'https://api.groq.com/openai/v1', chunkTokens: 4200, jsonMode: true, keyUrl: 'https://console.groq.com/keys' },
@@ -231,18 +232,30 @@ function parseTime(v) {
 
 const LANG_NAMES = { id: 'Bahasa Indonesia', en: 'English', ms: 'Bahasa Melayu', jv: 'Basa Jawa', su: 'Basa Sunda', es: 'Español', pt: 'Português', ja: '日本語', ko: '한국어', th: 'ไทย', vi: 'Tiếng Việt', hi: 'Hindi', ar: 'Arabic', zh: '中文' };
 
-function buildPrompt({ transcriptText, minLen, maxLen, want, titleLang, videoTitle, from, to }) {
+function buildPrompt({ transcriptText, minLen, maxLen, want, titleLang, videoTitle, from, to, promptTemplate = 'viral', customPrompt = '' }) {
   const langLine = titleLang && titleLang !== 'auto'
     ? `Write "title", "description" and "hook" in ${LANG_NAMES[titleLang] || titleLang}.`
     : 'Write "title", "description" and "hook" in the SAME language as the transcript (e.g. Indonesian transcript → Indonesian, casual/gaul is fine).';
-  const system = `You are a world-class short-form video editor (TikTok, Instagram Reels, YouTube Shorts). You find the most viral, self-contained moments in long videos (podcasts, streams, gaming, vlogs, talks).
+
+  const tpl = getTemplate(promptTemplate);
+
+  let focusSection = '';
+  if (tpl && tpl.instruction) {
+    focusSection += `\nTARGET THEME & FOCUS (${tpl.label.toUpperCase()}):\n${tpl.instruction}\n`;
+  }
+  if (customPrompt && customPrompt.trim()) {
+    focusSection += `\nUSER CUSTOM PROMPT (HIGHEST PRIORITY):\n"${customPrompt.trim()}"\nYou MUST find moments that directly match this instruction!\n`;
+  }
+
+  const system = `You are a world-class short-form video editor (TikTok, Instagram Reels, YouTube Shorts). You find the most engaging, self-contained moments in long videos (podcasts, streams, gaming, vlogs, talks).
+${focusSection}
 Rules for every clip:
 - Length MUST be between ${minLen} and ${maxLen} seconds.
 - Start exactly where a sentence or a strong hook begins (no mid-sentence start). The first 3 seconds must grab attention.
 - End at a natural payoff / punchline / conclusion. The clip must make sense without extra context.
-- Prefer: strong emotions, funny reactions, hot takes, surprising facts, conflicts, clutch/epic moments, quotable lines, useful tips, storytelling with payoff.
+- Prioritize moments matching the target theme and user prompt.
 - Clips must not overlap each other.
-- "score" = predicted virality 0-100 (be honest and discriminating, spread scores).
+- "score" = predicted virality & match to requested theme 0-100 (be honest and discriminating, spread scores).
 - "title" = catchy short-video title, max 70 chars, can include 1 emoji at most.
 - "description" = 1-2 sentences: what happens and why it's engaging.
 - "hook" = punchy thumbnail/opening headline, max 8 words.
@@ -252,9 +265,13 @@ CRITICAL OUTPUT RULES:
 - Do NOT output any reasoning, thinking process (<think>), conversational filler, or Markdown explanations.
 - Start directly with { and end with }.
 Use timestamps from the transcript (format [m:ss] or [h:mm:ss]).`;
+
+  const themeNote = tpl && tpl.id !== 'viral' ? `Target Style: ${tpl.label}\n` : '';
+  const promptNote = customPrompt && customPrompt.trim() ? `User specific search instruction: "${customPrompt.trim()}"\n` : '';
+
   const user = `Video title: ${videoTitle || '-'}
 Transcript window: ${fmt(from)} – ${fmt(to)}
-Find up to ${want} of the best clips inside this window (fewer if the content is weak).
+${themeNote}${promptNote}Find up to ${want} of the best clips inside this window matching the requested criteria (fewer if the content is weak).
 
 TRANSCRIPT:
 ${transcriptText}`;
@@ -308,22 +325,24 @@ function dedupe(clips) {
   return kept;
 }
 
-async function findHighlights({ settings, transcript, duration, videoTitle, onProgress, signal }) {
+async function findHighlights({ settings, transcript, duration, videoTitle, promptTemplate, customPrompt, onProgress, signal }) {
   const conf = providerConf(settings);
   const minLen = Number(settings.minLen) || 20; const maxLen = Number(settings.maxLen) || 90;
   const target = Math.max(1, Number(settings.clipCount) || 10);
   const wins = windows(transcript, conf.chunkTokens);
   const all = [];
+  const tpl = getTemplate(promptTemplate);
+  const tplDesc = tpl.id !== 'viral' ? ` [${tpl.label}]` : '';
   for (let i = 0; i < wins.length; i++) {
     const w = wins[i];
     const from = w[0].s; const to = w[w.length - 1].e;
     const share = (to - from) / Math.max(1, duration || to);
     const want = Math.max(2, Math.min(12, Math.ceil(target * share * 1.8)));
-    onProgress && onProgress(i / wins.length, `Analisa bagian ${i + 1}/${wins.length} dengan ${conf.name} (${conf.model})…`);
+    onProgress && onProgress(i / wins.length, `Analisa bagian ${i + 1}/${wins.length} (${conf.name} · ${conf.model}${tplDesc})…`);
     const text = w.map((s) => `[${fmt(s.s)}] ${s.text}`).join('\n');
     let res;
     try {
-      res = await chat(conf, buildPrompt({ transcriptText: text, minLen, maxLen, want, titleLang: settings.titleLanguage, videoTitle, from, to }), {
+      res = await chat(conf, buildPrompt({ transcriptText: text, minLen, maxLen, want, titleLang: settings.titleLanguage, videoTitle, from, to, promptTemplate, customPrompt }), {
         maxTokens: conf.id === 'groq' ? 2200 : 6000, signal,
         onWait: (sec, why) => onProgress && onProgress(i / wins.length, `Menunggu ${why} ${conf.name} (${Math.round(sec)} dtk)… bagian ${i + 1}/${wins.length}`),
       });
@@ -383,4 +402,4 @@ async function testConnection(settings, override) {
   return { ok: true, ms: Date.now() - t0, provider: conf.name, model: conf.model, reply: r };
 }
 
-module.exports = { PROVIDERS, providerConf, chat, findHighlights, suggestTitle, listModels, testConnection, parseTime, windows, snapClip, dedupe, parseJsonLoose };
+module.exports = { PROVIDERS, providerConf, chat, findHighlights, suggestTitle, listModels, testConnection, parseTime, windows, snapClip, dedupe, parseJsonLoose, PROMPT_TEMPLATES, getTemplate };

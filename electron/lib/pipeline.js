@@ -59,7 +59,7 @@ function ensureFonts(dir) {
   try { for (const f of fs.readdirSync(src)) if (/\.(ttf|otf)$/i.test(f) && !fs.existsSync(path.join(fd, f))) fs.copyFileSync(path.join(src, f), path.join(fd, f)); } catch (_) {}
 }
 
-async function createProject({ url, localPath }) {
+async function createProject({ url, localPath, promptTemplate, customPrompt }) {
   const settings = store.loadSettings();
   const id = new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + uid(6);
   const p = {
@@ -67,11 +67,13 @@ async function createProject({ url, localPath }) {
     title: url ? 'Memuat…' : path.basename(localPath), channel: '', video: null, cover: null,
     steps: Object.fromEntries(STEP_KEYS.map((k) => [k, { status: 'pending', detail: '', progress: 0 }])),
     webcam: null, webcamMode: 'auto', clips: [], renders: [], settingsSnapshot: { language: settings.language },
+    promptTemplate: promptTemplate || 'viral',
+    customPrompt: customPrompt || '',
   };
   const saved = store.saveProject(p);
   ensureFonts(saved.dir);
   emit('projects:changed');
-  runPipeline(id, 'download');
+  runPipeline(id, 'download', false, { promptTemplate, customPrompt });
   return publicProject(saved);
 }
 
@@ -88,7 +90,7 @@ function stepProgress(id, key, progress, detail) {
   emit('project:progress', { id, step: key, progress, detail });
 }
 
-async function runPipeline(id, fromStep = 'download', onlyStep = false) {
+async function runPipeline(id, fromStep = 'download', onlyStep = false, extra = {}) {
   if (active.has(id)) throw new Error('Proyek sedang berjalan');
   const ac = new AbortController();
   active.set(id, { abort: ac, kind: 'pipeline' });
@@ -96,12 +98,17 @@ async function runPipeline(id, fromStep = 'download', onlyStep = false) {
   const steps = onlyStep ? [fromStep] : STEP_KEYS.slice(idx < 0 ? 0 : idx);
   let current = null;
   try {
-    await update(id, (p) => { for (const k of steps) p.steps[k] = { status: 'pending', detail: '', progress: 0 }; return p; });
+    await update(id, (p) => {
+      for (const k of steps) p.steps[k] = { status: 'pending', detail: '', progress: 0 };
+      if (extra && extra.promptTemplate) p.promptTemplate = extra.promptTemplate;
+      if (extra && extra.customPrompt !== undefined) p.customPrompt = extra.customPrompt;
+      return p;
+    });
     for (const key of steps) {
       current = key;
       if (ac.signal.aborted) throw new Error('Dibatalkan');
       await setStep(id, key, { status: 'running', detail: 'Memulai…', progress: 0, startedAt: Date.now() });
-      const detail = await STEP_FN[key](id, ac.signal);
+      const detail = await STEP_FN[key](id, ac.signal, extra);
       await setStep(id, key, { status: 'done', detail: detail || 'Selesai', progress: 1, finishedAt: Date.now() });
     }
   } catch (e) {
@@ -269,22 +276,37 @@ const STEP_FN = {
     return `${t.words.length} kata, bahasa ${t.language || '?'} (${provLabels[t.source] || t.source})`;
   },
 
-  async highlights(id, signal) {
+  async highlights(id, signal, extra = {}) {
     const p = store.loadProject(id);
     const settings = store.loadSettings();
     const t = store.loadTranscript(p);
     if (!t || !t.segments.length) throw new Error('Transkrip kosong');
-    const clips = await llm.findHighlights({ settings, transcript: t, duration: p.video.duration, videoTitle: p.title, signal,
-      onProgress: (f, d) => stepProgress(id, 'highlights', f, d) });
+    const promptTemplate = (extra && extra.promptTemplate) || p.promptTemplate || 'viral';
+    const customPrompt = (extra && extra.customPrompt !== undefined ? extra.customPrompt : p.customPrompt) || '';
+    const clips = await llm.findHighlights({
+      settings,
+      transcript: t,
+      duration: p.video.duration,
+      videoTitle: p.title,
+      promptTemplate,
+      customPrompt,
+      signal,
+      onProgress: (f, d) => stepProgress(id, 'highlights', f, d),
+    });
     await update(id, (q) => {
       const manual = (q.clips || []).filter((c) => c.source === 'manual');
       const defaults = { ...settings.defaults };
       if (q.webcam && q.webcam.w) defaults.layout = 'split';
+      q.promptTemplate = promptTemplate;
+      q.customPrompt = customPrompt;
       q.clips = [...manual, ...clips.map((c) => newClip({ ...c, source: 'llm' }, defaults))].sort((a, b) => a.start - b.start);
       return q;
     });
-    const { providerConf } = llm; const conf = providerConf(settings);
-    return `${clips.length} klip (llm, ${conf.model})`;
+    const { providerConf, getTemplate } = llm;
+    const conf = providerConf(settings);
+    const tpl = getTemplate ? getTemplate(promptTemplate) : { label: promptTemplate };
+    const tplLabel = promptTemplate !== 'viral' ? ` · ${tpl.label}` : '';
+    return `${clips.length} klip (${conf.model}${tplLabel})`;
   },
 
   async webcam(id) {

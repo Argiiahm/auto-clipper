@@ -62,7 +62,7 @@ handle('projects:list', () => store.listProjects());
 handle('project:get', (id) => pipeline.publicProject(store.loadProject(id)));
 handle('project:create', (opts) => pipeline.createProject(opts));
 handle('project:delete', (id) => { pipeline.cancel(id); store.deleteProject(id); send('projects:changed'); return true; });
-handle('project:run', (id, from, only) => { pipeline.runPipeline(id, from, only).catch(() => {}); return true; });
+handle('project:run', (id, from, only, extra) => { pipeline.runPipeline(id, from, only, extra).catch(() => {}); return true; });
 handle('project:cancel', (id) => { pipeline.cancel(id); return true; });
 handle('project:rename', async (id, title) => { const p = store.loadProject(id); p.title = title; return store.saveProject(p); });
 handle('transcript:get', (id) => store.loadTranscript(store.loadProject(id)));

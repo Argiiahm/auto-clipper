@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Scissors, Link2, Upload, Settings as Cog, Trash2, Film, KeyRound, ArrowRight, MonitorPlay, FolderOpen, Search, Home as HomeIcon, Plus } from 'lucide-react';
+import { Scissors, Link2, Upload, Settings as Cog, Trash2, Film, KeyRound, ArrowRight, MonitorPlay, FolderOpen, Search, Home as HomeIcon, Plus, Sparkles } from 'lucide-react';
 import { api, call, fileUrl } from '../lib/api';
 import { fmtDur, timeAgo, cx } from '../lib/format';
 import { Spinner, toast, Segmented } from '../components/ui.jsx';
 import { THEMES } from '../components/ThemeMenu.jsx';
+import PromptSelector from '../components/PromptSelector.jsx';
+import { getTemplate } from '../lib/templates';
 
 const STEP_LABEL = { download: 'Download', transcribe: 'Transkrip', highlights: 'Highlight', webcam: 'Webcam' };
 
@@ -19,6 +21,8 @@ function statusOf(p) {
 
 export default function Home({ settings, hasKey, openSettings, openProject, setTheme }) {
   const [url, setUrl] = useState('');
+  const [promptTemplate, setPromptTemplate] = useState('viral');
+  const [customPrompt, setCustomPrompt] = useState('');
   const [projects, setProjects] = useState([]);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
@@ -32,15 +36,33 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
 
   const start = async (opts) => {
     setBusy(true);
-    try { const p = await call('project:create', opts); setUrl(''); openProject(p.id); }
+    try {
+      const p = await call('project:create', {
+        ...opts,
+        promptTemplate,
+        customPrompt: customPrompt.trim(),
+      });
+      setUrl('');
+      setCustomPrompt('');
+      openProject(p.id);
+    }
     catch (e) { toast(e.message, 'error'); } finally { setBusy(false); }
   };
   const submit = () => {
     const u = url.trim();
     if (!/^https?:\/\//i.test(u)) return toast('Masukkan link video yang valid (YouTube, TikTok, Twitch VOD, dll).', 'error');
+    if (promptTemplate === 'custom' && !customPrompt.trim()) {
+      return toast('Tulis instruksi prompt kustom untuk mencari klip.', 'error');
+    }
     start({ url: u });
   };
-  const importLocal = async () => { const f = await call('dialog:openVideo'); if (f) start({ localPath: f }); };
+  const importLocal = async () => {
+    if (promptTemplate === 'custom' && !customPrompt.trim()) {
+      return toast('Tulis instruksi prompt kustom untuk mencari klip terlebih dahulu.', 'error');
+    }
+    const f = await call('dialog:openVideo');
+    if (f) start({ localPath: f });
+  };
   const del = async (e, p) => {
     e.stopPropagation();
     if (!confirm(`Hapus project "${p.title}" beserta semua file-nya?`)) return;
@@ -72,9 +94,9 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="max-w-[1180px] mx-auto px-8 py-8">
           <div className="grid grid-cols-[1fr_260px] gap-4">
-            <div className="rounded-xl border border-line bg-panel p-5">
+            <div className="rounded-xl border border-line bg-panel p-5 space-y-4">
               <div className="flex items-center gap-2 text-[14px] font-semibold text-fg"><Plus size={16} />Proyek baru dari link</div>
-              <div className="mt-4 flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <div className="flex-1 flex items-center h-11 rounded-lg bg-panel2 border border-line focus-within:border-accent transition">
                   <Link2 size={16} className="ml-3 text-muted shrink-0" />
                   <input className="flex-1 h-full bg-transparent outline-none px-2.5 text-[13.5px] text-fg placeholder:text-faint" placeholder="Tempel link YouTube, Twitch VOD, TikTok…"
@@ -82,12 +104,27 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                 </div>
                 <button className="btn-primary h-11 px-5 text-[13px]" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <ArrowRight size={16} />}Mulai</button>
               </div>
-              <div className="mt-3 text-[12px] text-muted">Download → transkrip → cari highlight → atur & edit klip → ekspor 1080×1920.</div>
+
+              {/* Prompt & Template Selector */}
+              <div className="pt-2 border-t border-line/60">
+                <PromptSelector
+                  template={promptTemplate}
+                  onSelectTemplate={setPromptTemplate}
+                  customPrompt={customPrompt}
+                  onChangePrompt={setCustomPrompt}
+                />
+              </div>
+
+              <div className="text-[12px] text-muted">Download → transkrip → cari highlight ({getTemplate(promptTemplate).label}) → atur & edit klip → ekspor 1080×1920.</div>
             </div>
-            <button onClick={importLocal} disabled={busy} className="rounded-xl border border-dashed border-line bg-panel hover:border-accent hover:bg-accent/5 transition flex flex-col items-center justify-center gap-2 text-fg">
+            <button onClick={importLocal} disabled={busy} className="rounded-xl border border-dashed border-line bg-panel hover:border-accent hover:bg-accent/5 transition flex flex-col items-center justify-center gap-2 text-fg p-4 text-center">
               <div className="w-10 h-10 rounded-full bg-accent/15 text-accent-300 flex items-center justify-center"><Upload size={18} /></div>
               <div className="text-[13px] font-semibold">Impor video lokal</div>
               <div className="text-[11.5px] text-muted">mp4, mkv, mov, webm…</div>
+              <div className="mt-2 text-[10.5px] px-2.5 py-1 rounded-md bg-panel2 border border-line text-muted flex items-center gap-1">
+                <span>Fokus:</span>
+                <b className="text-fg truncate max-w-[150px]">{getTemplate(promptTemplate).label}</b>
+              </div>
             </button>
           </div>
 
@@ -131,7 +168,14 @@ export default function Home({ settings, hasKey, openSettings, openProject, setT
                         <span className="truncate">{p.channel || 'Video lokal'}</span>
                         <span className="shrink-0">{timeAgo(p.createdAt)}</span>
                       </div>
-                      {p.renderCount > 0 && <div className="mt-0.5 text-[11px] text-emerald-600 dark:text-emerald-400">{p.renderCount} hasil ekspor</div>}
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        {p.promptTemplate && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-panel2 border border-line text-muted">
+                            {getTemplate(p.promptTemplate).label}
+                          </span>
+                        )}
+                        {p.renderCount > 0 && <span className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-medium">{p.renderCount} hasil ekspor</span>}
+                      </div>
                     </div>
                   </div>
                 );

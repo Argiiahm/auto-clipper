@@ -16,7 +16,9 @@ import WebcamModal from '../components/WebcamModal.jsx';
 import ThemeMenu from '../components/ThemeMenu.jsx';
 import { MediaPanel, TextPanel, AudioPanel, WatermarkPanel, AdjustPanel } from '../components/EditorPanels.jsx';
 import { TextInspector, ImageInspector, SceneInspector, MusicInspector } from '../components/Inspectors.jsx';
-import { Spinner, toast } from '../components/ui.jsx';
+import { Spinner, toast, Modal } from '../components/ui.jsx';
+import PromptSelector from '../components/PromptSelector.jsx';
+import { getTemplate } from '../lib/templates';
 
 const STEP_NAMES = { download: 'Download video', transcribe: 'Transkrip audio', highlights: 'Mencari highlight', webcam: 'Webcam' };
 const LEFT_TABS = [['clips', 'Klip', Scissors], ['media', 'Media', Film], ['text', 'Teks', Type], ['audio', 'Audio', Music], ['watermark', 'Watermark', Stamp], ['adjust', 'Adjust', SlidersHorizontal]];
@@ -34,6 +36,9 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
   const [sortBy, setSortBy] = useState('time');
   const [view, setView] = useState('preview');
   const [webcamOpen, setWebcamOpen] = useState(false);
+  const [findModalOpen, setFindModalOpen] = useState(false);
+  const [reTemplate, setReTemplate] = useState('viral');
+  const [reCustomPrompt, setReCustomPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [thumbBusy, setThumbBusy] = useState(false);
   const [leftTab, setLeftTab] = useState('clips');
@@ -352,9 +357,21 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
   const hlDone = project.steps.highlights.status === 'done' || project.clips.length > 0;
 
   const retry = (step) => call('project:run', id, step).catch((e) => toast(e.message, 'error'));
-  const findAgain = () => {
-    if (project.clips.some((c) => c.source !== 'manual') && !confirm('Cari highlight lagi? Klip hasil AI saat ini akan diganti (klip manual tetap disimpan).')) return;
-    call('project:run', id, 'highlights', true).catch((e) => toast(e.message, 'error'));
+  const openFindModal = () => {
+    setReTemplate(project.promptTemplate || 'viral');
+    setReCustomPrompt(project.customPrompt || '');
+    setFindModalOpen(true);
+  };
+  const confirmFindHighlights = () => {
+    if (reTemplate === 'custom' && !reCustomPrompt.trim()) {
+      return toast('Tulis instruksi prompt kustom untuk mencari klip.', 'error');
+    }
+    setFindModalOpen(false);
+    call('project:run', id, 'highlights', true, {
+      promptTemplate: reTemplate,
+      customPrompt: reCustomPrompt.trim(),
+    }).catch((e) => toast(e.message, 'error'));
+    toast(`Mencari highlight (${getTemplate(reTemplate).label})…`, 'info');
   };
   const toggleClip = (cid, v) => {
     const p = projectRef.current; setProject({ ...p, clips: p.clips.map((c) => (c.id === cid ? { ...c, selected: v } : c)) });
@@ -466,7 +483,14 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
       <div className="h-12 px-2 flex items-center gap-2 border-b border-line bg-panel shrink-0">
         <button className="icon-btn" title="Kembali ke beranda" onClick={back}><ArrowLeft size={17} /></button>
         <div className="min-w-0 flex-1 pl-1">
-          <div className="text-[13px] font-semibold text-fg truncate">{project.title}</div>
+          <div className="text-[13px] font-semibold text-fg truncate flex items-center gap-2">
+            <span className="truncate">{project.title}</span>
+            {project.promptTemplate && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent font-medium border border-accent/20 shrink-0">
+                {getTemplate(project.promptTemplate).label}
+              </span>
+            )}
+          </div>
           <div className="text-[11px] text-muted flex items-center gap-1.5 truncate">
             <span>{project.channel || (project.source === 'local' ? 'Video lokal' : '')}</span>
             {project.url && <button className="hover:text-accent-300 inline-flex items-center gap-1 truncate" onClick={() => call('shell:external', project.url)}>{project.url}<ExternalLink size={10} /></button>}
@@ -475,7 +499,7 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
         <button className="btn-ghost btn-sm" disabled={!project.video} onClick={() => setWebcamOpen(true)}><Webcam size={14} />Webcam <span className="text-[11px] text-muted">{project.webcam ? 'ditandai' : '—'}</span></button>
         {running === 'pipeline'
           ? <button className="btn-soft btn-sm text-red-500" onClick={() => call('project:cancel', id)}><Square size={12} />Batalkan</button>
-          : <button className="btn-ghost btn-sm" disabled={!tDone || !!running} onClick={findAgain}><Sparkles size={14} />Cari highlight lagi</button>}
+          : <button className="btn-ghost btn-sm" disabled={!tDone || !!running} onClick={openFindModal}><Sparkles size={14} className="text-accent" />Cari highlight lagi</button>}
         <div className="w-px h-5 bg-line mx-0.5" />
         <button className="icon-btn" title="Buka folder proyek" onClick={() => call('shell:open', project.dir)}><FolderOpen size={16} /></button>
         <ThemeMenu value={settings.theme} onChange={setTheme} />
@@ -582,6 +606,35 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
 
       <WebcamModal open={webcamOpen} onClose={() => setWebcamOpen(false)} project={project} startTime={clip ? clip.start + 1 : 0}
         onSave={async (rect) => { await call('webcam:set', id, rect); toast(rect ? 'Webcam disimpan, layout Split aktif' : 'Webcam dihapus', 'success'); }} />
+
+      <Modal
+        open={findModalOpen}
+        onClose={() => setFindModalOpen(false)}
+        title="Cari Ulang Highlight dengan AI"
+        width="max-w-2xl"
+        footer={
+          <>
+            <button className="btn-ghost btn-sm" onClick={() => setFindModalOpen(false)}>Batal</button>
+            <button className="btn-primary btn-sm" onClick={confirmFindHighlights}>
+              <Sparkles size={13} />
+              Mulai Cari Klip ({getTemplate(reTemplate).label})
+            </button>
+          </>
+        }
+      >
+        <div className="p-5 space-y-4">
+          <div className="text-[12px] text-muted leading-relaxed">
+            Pilih gaya atau template klip yang ingin dicari AI. Klip hasil AI saat ini akan diganti sesuai hasil pencarian baru (klip buatan manual Anda tetap tersimpan).
+          </div>
+          <PromptSelector
+            template={reTemplate}
+            onSelectTemplate={setReTemplate}
+            customPrompt={reCustomPrompt}
+            onChangePrompt={setReCustomPrompt}
+            title="Pilih Gaya Klip & Prompt AI"
+          />
+        </div>
+      </Modal>
     </div>
   );
 }
