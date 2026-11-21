@@ -18,6 +18,7 @@ import { MediaPanel, TextPanel, AudioPanel, WatermarkPanel, AdjustPanel } from '
 import { TextInspector, ImageInspector, SceneInspector, MusicInspector, CaptionInspector } from '../components/Inspectors.jsx';
 import { Spinner, toast, Modal } from '../components/ui.jsx';
 import PromptSelector from '../components/PromptSelector.jsx';
+import QrShareModal from '../components/QrShareModal.jsx';
 import { getTemplate } from '../lib/templates';
 
 const STEP_NAMES = { download: 'Download video', transcribe: 'Transkrip audio', highlights: 'Mencari highlight', webcam: 'Webcam' };
@@ -50,6 +51,9 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
   const [tlH, setTlH] = useState(250);
   const [, setHistTick] = useState(0);
   const [wm, setWmState] = useState(settings.watermark || {});
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrData, setQrData] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
   const videoRef = useRef(null); const insRef = useRef(null); const musicRef = useRef(null);
   const pending = useRef({}); const timers = useRef({});
   const projectRef = useRef(null); const activeRef = useRef(null);
@@ -67,6 +71,20 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
     return { ...p, clips: p.clips.map((c) => (pend[c.id] ? { ...c, ...pend[c.id] } : c)) };
   };
 
+  const openShareQr = useCallback(async (renderItem) => {
+    if (!renderItem) return;
+    setQrModalOpen(true);
+    setQrLoading(true);
+    try {
+      const res = await call('share:getQr', id, renderItem.id);
+      setQrData(res);
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setQrLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     let alive = true;
     call('project:get', id).then((p) => alive && setProject(p)).catch((e) => toast(e.message, 'error'));
@@ -74,10 +92,21 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
       api.on('project:updated', (p) => { if (p.id === id) setProject(applyPending(p)); }),
       api.on('project:progress', (d) => { if (d.id === id) setProgress((x) => ({ ...x, [d.step]: d })); }),
       api.on('render:progress', (d) => { if (d.id === id) setRenderProg((x) => ({ ...x, [d.clipId]: d.progress })); }),
-      api.on('render:finished', (d) => {
+      api.on('render:finished', async (d) => {
         if (d.id !== id) return;
-        if (d.error) toast(d.error, 'error');
-        else toast(`Ekspor selesai: ${d.done} berhasil${d.failed ? `, ${d.failed} gagal` : ''}`, d.failed ? 'error' : 'success');
+        if (d.error) {
+          toast(d.error, 'error');
+        } else {
+          toast(`Ekspor selesai: ${d.done} berhasil${d.failed ? `, ${d.failed} gagal` : ''}`, d.failed ? 'error' : 'success');
+          if (d.done > 0) {
+            try {
+              const p = await call('project:get', id);
+              if (p && p.renders && p.renders.length) {
+                openShareQr(p.renders[0]);
+              }
+            } catch (_) {}
+          }
+        }
       }),
     ];
     return () => { alive = false; offs.forEach((f) => f()); };
@@ -628,7 +657,7 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
               <div className="flex-1 min-h-0">
                 {leftTab === 'clips' && <ClipList project={project} tab={tab} setTab={setTab} sortBy={sortBy} setSortBy={setSortBy} activeId={activeId} setActiveId={(cid) => { setActiveId(cid); setView('preview'); }}
                   onToggle={toggleClip} onAll={selectAll} onAdd={addClip} renderProg={renderProg}
-                  onPlayRender={(r) => { setActiveId(r.clipId); setView('rendered'); }} onDeleteRender={async (r) => { if (confirm('Hapus file hasil ekspor ini?')) await call('render:delete', id, r.id); }} onShow={show} />}
+                  onPlayRender={(r) => { setActiveId(r.clipId); setView('rendered'); }} onDeleteRender={async (r) => { if (confirm('Hapus file hasil ekspor ini?')) await call('render:delete', id, r.id); }} onShow={show} onShareQr={openShareQr} />}
                 {leftTab === 'media' && <MediaPanel project={project} onImport={importAssets} onDelete={deleteAsset} onInsertScene={insertScene} onAddOverlay={addImageOverlay} />}
                 {leftTab === 'text' && <TextPanel onAdd={addText} />}
                 {leftTab === 'audio' && <AudioPanel project={project} music={edit.music} total={seq.total} t={player.t} onImport={importAssets} onUse={useMusic} onDelete={deleteAsset} onMusicChange={onMusicChange} />}
@@ -701,6 +730,13 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
           />
         </div>
       </Modal>
+
+      <QrShareModal
+        open={qrModalOpen}
+        onClose={() => setQrModalOpen(false)}
+        data={qrData}
+        loading={qrLoading}
+      />
     </div>
   );
 }

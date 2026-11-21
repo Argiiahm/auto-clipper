@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, CheckCircle2, AlertCircle, LayoutPanelTop, Captions, FolderOpen, Trash2, Play, Pencil } from 'lucide-react';
+import { Plus, CheckCircle2, AlertCircle, LayoutPanelTop, Captions, FolderOpen, Trash2, Play, Pencil, QrCode } from 'lucide-react';
 import { Check, Segmented, Spinner, Empty } from './ui.jsx';
 import { fmtTime, scoreColor, cx, timeAgo } from '../lib/format';
 import { CAPTION_STYLES } from '../lib/captions';
@@ -44,7 +44,7 @@ export function ClipCard({ clip, active, onClick, onToggle, renderProg }) {
   );
 }
 
-export default function ClipList({ project, tab, setTab, sortBy, setSortBy, activeId, setActiveId, onToggle, onAll, onAdd, renderProg, onPlayRender, onDeleteRender, onShow }) {
+export default function ClipList({ project, tab, setTab, sortBy, setSortBy, activeId, setActiveId, onToggle, onAll, onAdd, renderProg, onPlayRender, onDeleteRender, onShow, onShareQr }) {
   const clips = [...(project.clips || [])].sort((a, b) => (sortBy === 'score' ? (b.score ?? -1) - (a.score ?? -1) : a.start - b.start));
   const renders = project.renders || [];
   return (
@@ -74,8 +74,11 @@ export default function ClipList({ project, tab, setTab, sortBy, setSortBy, acti
             <div key={r.id} className="rounded-lg border border-line bg-panel p-2.5">
               <div className="text-[12.5px] font-semibold text-fg line-clamp-2">{r.title}</div>
               <div className="text-[11px] text-muted mt-1">{fmtTime(r.start)}–{fmtTime(r.end)} · {LAYOUT[r.layout] || r.layout} · {(CAPTION_STYLES[r.captionStyle] || {}).label} · {timeAgo(r.createdAt)}</div>
-              <div className="mt-2 flex gap-1.5">
+              <div className="mt-2 flex gap-1.5 flex-wrap">
                 <button className="btn-soft btn-sm" onClick={() => onPlayRender(r)}><Play size={12} />Putar</button>
+                <button className="btn-primary btn-sm flex items-center gap-1" onClick={() => onShareQr && onShareQr(r)} title="Scan barcode untuk simpan ke HP">
+                  <QrCode size={12} />Kirim ke HP
+                </button>
                 <button className="btn-soft btn-sm" onClick={() => onShow(r.path)}><FolderOpen size={12} />Folder</button>
                 <button className="btn-danger btn-sm ml-auto" onClick={() => onDeleteRender(r)}><Trash2 size={12} /></button>
               </div>

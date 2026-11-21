@@ -5,6 +5,7 @@ const store = require('./lib/store');
 const pipeline = require('./lib/pipeline');
 const llm = require('./lib/llm');
 const media = require('./lib/media');
+const sharing = require('./lib/sharing');
 const { userDataDir } = require('./lib/paths');
 
 let win = null;
@@ -109,6 +110,7 @@ handle('clip:aiTitle', async (id, clipId) => {
 handle('webcam:set', (id, rect) => pipeline.setWebcam(id, rect));
 handle('render:start', (id, clipIds, rasters) => { pipeline.renderClips(id, clipIds, rasters).catch((e) => send('render:finished', { id, error: e.message })); return true; });
 handle('render:delete', (id, renderId) => pipeline.deleteRender(id, renderId));
+handle('share:getQr', (id, renderId) => sharing.getQrCode(id, renderId));
 handle('asset:import', async (id, kinds) => {
   const filters = {
     media: [{ name: 'Video / Gambar', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],

@@ -73,14 +73,16 @@
     "autoprefixer": "^10.6.2",
     "electron": "^38.8.6",
     "electron-builder": "^25.1.8",
+    "lucide-react": "^1.75.0",
     "postcss": "^8.5.33",
-    "resedit": "^2.0.3",
-    "tailwindcss": "^3.4.19",
-    "vite": "^5.4.21",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "lucide-react": "^1.75.0"
+    "resedit": "^2.0.3",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.4.21"
   },
-  "dependencies": {},
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
   "type": "commonjs"
 }
