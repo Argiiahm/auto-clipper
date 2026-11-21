@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Trash2, Copy, Crosshair, AlignLeft, AlignCenter, AlignRight, Film, Image as ImageIco, Eye, EyeOff } from 'lucide-react';
+import { Trash2, Copy, Crosshair, AlignLeft, AlignCenter, AlignRight, Film, Image as ImageIco, Eye, EyeOff, Captions } from 'lucide-react';
 import { Section, SliderRow, Toggle, Segmented, ColorInput, NumInput, Field } from './ui.jsx';
 import { FONTS } from '../lib/overlay';
 import { MusicControls } from './EditorPanels.jsx';
@@ -12,6 +12,9 @@ const Head = ({ title, icon, children }) => (
 function Timing({ o, total, t, change }) {
   return (
     <Section title="Waktu tampil">
+      <div className="text-[11px] text-muted -mt-1 mb-2">
+        💡 Tarik balok atau ujung kiri/kanan di timeline untuk mengatur waktu mulai & selesai.
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Mulai"><NumInput value={o.start} min={0} max={o.end - 0.1} onCommit={(v) => change({ start: v })} suffix="s" /></Field>
         <Field label="Selesai"><NumInput value={o.end} min={o.start + 0.1} max={total} onCommit={(v) => change({ end: v })} suffix="s" /></Field>
@@ -147,11 +150,51 @@ export function SceneInspector({ ins, asset, change, onDelete, onMoveToPlayhead,
   );
 }
 
-export function MusicInspector({ music, asset, onChange }) {
+export function MusicInspector({ music, asset, total, t, onChange }) {
   return (
     <div className="flex flex-col h-full min-h-0">
       <Head title="Musik latar" />
-      <div className="flex-1 overflow-y-auto"><Section><MusicControls music={music} asset={asset} onChange={onChange} /></Section></div>
+      <div className="flex-1 overflow-y-auto"><Section><MusicControls music={music} asset={asset} total={total} t={t} onChange={onChange} /></Section></div>
+    </div>
+  );
+}
+
+export function CaptionInspector({ group, total, t, onChange, onDelete }) {
+  if (!group) return null;
+  const text = (group.words || []).map((w) => w.rawW || w.w).join(' ');
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <Head title="Baris Subtitle" icon={<Captions size={14} className="text-muted" />}>
+        <button className="icon-btn w-7 h-7 hover:text-red-500" title="Hapus subtitle ini" onClick={onDelete}><Trash2 size={14} /></button>
+      </Head>
+      <div className="flex-1 overflow-y-auto">
+        <Section title="Teks">
+          <div className="p-2.5 rounded-lg bg-panel2 border border-line text-[13px] font-medium text-fg leading-relaxed">
+            "{text}"
+          </div>
+        </Section>
+        <Section title="Waktu tampil">
+          <div className="text-[11px] text-muted -mt-1 mb-2">
+            💡 Tarik balok atau ujung kiri/kanan subtitle ini langsung di timeline untuk mengatur waktu mulai & selesai.
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Mulai">
+              <NumInput value={group.start} min={0} max={group.end - 0.2} onCommit={(v) => onChange({ start: v, end: group.end })} suffix="s" />
+            </Field>
+            <Field label="Selesai">
+              <NumInput value={group.end} min={group.start + 0.2} max={total} onCommit={(v) => onChange({ start: group.start, end: v })} suffix="s" />
+            </Field>
+          </div>
+          <div className="flex gap-1.5 pt-1">
+            <button className="btn-soft btn-sm" onClick={() => t < group.end - 0.2 && onChange({ start: +t.toFixed(2), end: group.end })}>
+              <Crosshair size={12} />Mulai di playhead
+            </button>
+            <button className="btn-soft btn-sm" onClick={() => t > group.start + 0.2 && onChange({ start: group.start, end: +t.toFixed(2) })}>
+              <Crosshair size={12} />Selesai di playhead
+            </button>
+          </div>
+        </Section>
+      </div>
     </div>
   );
 }

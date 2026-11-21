@@ -21,9 +21,15 @@ export default function usePlayer({ videoRef, insRef, musicRef, seq, clipId, ass
     if (!m) return;
     if (!mu || !mu.url) { if (!m.paused) m.pause(); return; }
     if (m.dataset.src !== mu.url) { m.src = mu.url; m.dataset.src = mu.url; }
+    const mStart = Number(mu.start) || 0;
+    const mEnd = mu.end != null ? Number(mu.end) : Infinity;
+    if (time < mStart || time > mEnd) {
+      if (!m.paused) m.pause();
+      return;
+    }
     const go = () => {
       const d = m.duration || 0;
-      let pos = (Number(mu.offset) || 0) + time;
+      let pos = (Number(mu.offset) || 0) + (time - mStart);
       if (d > 0) pos = pos % d;
       if (Math.abs(m.currentTime - pos) > 0.25) m.currentTime = pos;
       if (play) m.play().catch(() => {}); else m.pause();
@@ -112,7 +118,19 @@ export default function usePlayer({ videoRef, insRef, musicRef, seq, clipId, ass
           const next = s.items[idx + 1];
           if (next) { nt = next.os; syncTo(nt, true); } else { nt = 0; syncTo(0, true); }
         }
-        if (Math.abs(nt - tRef.current) > 0.001) { tRef.current = nt; setT(nt); }
+        if (Math.abs(nt - tRef.current) > 0.001) {
+          tRef.current = nt; setT(nt);
+          const mu = musicRefState.current;
+          if (mu && mu.url && musicRef.current) {
+            const mStart = Number(mu.start) || 0;
+            const mEnd = mu.end != null ? Number(mu.end) : Infinity;
+            if (nt < mStart || nt > mEnd) {
+              if (!musicRef.current.paused) musicRef.current.pause();
+            } else if (musicRef.current.paused && playingRef.current) {
+              syncMusic(nt, true);
+            }
+          }
+        }
       }
       raf = requestAnimationFrame(loop);
     };
@@ -129,7 +147,7 @@ export default function usePlayer({ videoRef, insRef, musicRef, seq, clipId, ass
     tRef.current = time; setT(time);
     syncTo(time, playingRef.current);
   }, [sig]);
-  useEffect(() => { syncMusic(tRef.current, playingRef.current); }, [music && music.url, music && music.offset]);
+  useEffect(() => { syncMusic(tRef.current, playingRef.current); }, [music && music.url, music && music.offset, music && music.start, music && music.end]);
   useEffect(() => { if (!active) pause(); }, [active]);
 
   return { t, tRef, playing, seek, play, pause, toggle, curRef, imgClock };

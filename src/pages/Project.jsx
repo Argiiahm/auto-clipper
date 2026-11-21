@@ -15,7 +15,7 @@ import Timeline from '../components/Timeline.jsx';
 import WebcamModal from '../components/WebcamModal.jsx';
 import ThemeMenu from '../components/ThemeMenu.jsx';
 import { MediaPanel, TextPanel, AudioPanel, WatermarkPanel, AdjustPanel } from '../components/EditorPanels.jsx';
-import { TextInspector, ImageInspector, SceneInspector, MusicInspector } from '../components/Inspectors.jsx';
+import { TextInspector, ImageInspector, SceneInspector, MusicInspector, CaptionInspector } from '../components/Inspectors.jsx';
 import { Spinner, toast, Modal } from '../components/ui.jsx';
 import PromptSelector from '../components/PromptSelector.jsx';
 import { getTemplate } from '../lib/templates';
@@ -105,7 +105,15 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
   const assetUrl = useCallback((aid) => { const a = assetsRef.current[aid]; return a ? fileUrl(dirRef.current + '/' + a.rel) : ''; }, []);
   const imgs = useMemo(() => ({ get: (aid) => cachedImage(assetUrl(aid)) }), [assetUrl]);
   const musicAsset = edit.music && assetsMap[edit.music.asset];
-  const musicInfo = musicAsset ? { url: assetUrl(musicAsset.id), offset: edit.music.offset || 0, volume: edit.music.volume ?? 0.5, name: musicAsset.name } : null;
+  const musicInfo = musicAsset ? {
+    url: assetUrl(musicAsset.id),
+    offset: edit.music.offset || 0,
+    start: edit.music.start != null ? edit.music.start : 0,
+    end: edit.music.end != null ? edit.music.end : seq.total,
+    volume: edit.music.volume ?? 0.5,
+    sourceVolume: edit.music.sourceVolume ?? 1,
+    name: musicAsset.name,
+  } : null;
   const groups = useMemo(() => (clip && transcript ? buildGroups(mapWords(transcript.words, seq), { ...clip, start: 0, end: seq.total }) : []),
     [seq, transcript, clip && clip.captionStyle, clip && clip.wordsPerLine]);
   const player = usePlayer({ videoRef, insRef, musicRef, seq, clipId: clip && clip.id, assetUrl, music: musicInfo, active: view === 'preview' && !!clip });
@@ -150,7 +158,47 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
   }, [patchClipFields]);
   const onOverlayChange = useCallback((oid, f, lo) => patchEdit((ed) => ({ ...ed, overlays: ed.overlays.map((o) => (o.id === oid ? { ...o, ...f } : o)) }), lo), [patchEdit]);
   const onInsertChange = useCallback((iid, f, lo) => patchEdit((ed) => ({ ...ed, inserts: ed.inserts.map((o) => (o.id === iid ? { ...o, ...f } : o)) }), lo), [patchEdit]);
-  const onMusicChange = useCallback((f, lo) => patchEdit((ed) => ({ ...ed, music: f === null ? null : { ...(ed.music || {}), ...f } }), lo), [patchEdit]);
+  const onMusicChange = useCallback((f, lo) => patchEdit((ed) => ({
+    ...ed,
+    music: f === null ? null : {
+      ...(ed.music || {}),
+      start: (ed.music && ed.music.start != null) ? ed.music.start : 0,
+      end: (ed.music && ed.music.end != null) ? ed.music.end : +seq.total.toFixed(2),
+      ...f,
+    }
+  }), lo), [patchEdit, seq.total]);
+
+  const onCaptionChange = useCallback((gi, { start, end }, localOnly = false) => {
+    if (!transcript || !transcript.words || !groups[gi]) return;
+    const g = groups[gi];
+    const oldStart = g.start;
+    const oldEnd = g.end;
+    const oldSpan = Math.max(0.1, oldEnd - oldStart);
+    const newSpan = Math.max(0.1, end - start);
+
+    const nextWords = [...transcript.words];
+    g.words.forEach((w) => {
+      const idx = w.origIdx;
+      if (idx != null && nextWords[idx]) {
+        const relS = (w.s - oldStart) / oldSpan;
+        const relE = (w.e - oldStart) / oldSpan;
+        const mappedS = start + relS * newSpan;
+        const mappedE = start + relE * newSpan;
+        nextWords[idx] = {
+          ...nextWords[idx],
+          s: +Math.max(0, mappedS).toFixed(3),
+          e: +Math.max(mappedS + 0.05, mappedE).toFixed(3),
+        };
+      }
+    });
+
+    const nextT = { ...transcript, words: nextWords };
+    setTranscript(nextT);
+
+    if (!localOnly) {
+      call('transcript:save', id, nextT).catch((e) => toast(e.message, 'error'));
+    }
+  }, [id, transcript, groups]);
 
   const undo = () => {
     const e = hist.current.undo.pop(); if (!e) return;
@@ -294,6 +342,16 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
     if (selection.type === 'ov') patchEdit((ed) => ({ ...ed, overlays: ed.overlays.filter((o) => o.id !== selection.id) }));
     else if (selection.type === 'ins') patchEdit((ed) => ({ ...ed, inserts: ed.inserts.filter((o) => o.id !== selection.id) }));
     else if (selection.type === 'music') patchEdit((ed) => ({ ...ed, music: null }));
+    else if (selection.type === 'cap') {
+      const g = groups[selection.id];
+      if (g && transcript && transcript.words) {
+        const wordIndices = new Set(g.words.map((w) => w.origIdx).filter((x) => x != null));
+        const nextWords = transcript.words.filter((_, idx) => !wordIndices.has(idx));
+        const nextT = { ...transcript, words: nextWords };
+        setTranscript(nextT);
+        call('transcript:save', id, nextT).catch((e) => toast(e.message, 'error'));
+      }
+    }
     else if (selection.type === 'src') {
       const it = seq.items.find((i) => i.id === selection.id);
       if (!it) return;
@@ -313,7 +371,14 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
     if (!confirm(used ? `"${a.name}" dipakai di klip. Hapus dari proyek dan semua klip?` : `Hapus "${a.name}" dari proyek?`)) return;
     try { await call('asset:delete', id, a.id); setSelection(null); } catch (e) { toast(e.message, 'error'); }
   };
-  const useMusic = (a) => onMusicChange({ asset: a.id, volume: (edit.music && edit.music.volume) ?? 0.5, sourceVolume: (edit.music && edit.music.sourceVolume) ?? 1, offset: 0 });
+  const useMusic = (a) => onMusicChange({
+    asset: a.id,
+    volume: (edit.music && edit.music.volume) ?? 0.5,
+    sourceVolume: (edit.music && edit.music.sourceVolume) ?? 1,
+    offset: 0,
+    start: 0,
+    end: +seq.total.toFixed(2),
+  });
 
   const setWm = (p, localOnly) => {
     const next = { ...wmRef.current, ...p };
@@ -461,7 +526,8 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
     if (selOv && selOv.type === 'text') inspector = <TextInspector o={selOv} total={seq.total} t={player.t} change={(f, lo) => onOverlayChange(selOv.id, f, lo)} onDelete={deleteSel} onDuplicate={() => dupOverlay(selOv.id)} />;
     else if (selOv) inspector = <ImageInspector o={selOv} asset={assetsMap[selOv.asset]} total={seq.total} t={player.t} change={(f, lo) => onOverlayChange(selOv.id, f, lo)} onDelete={deleteSel} onDuplicate={() => dupOverlay(selOv.id)} />;
     else if (selIns) inspector = <SceneInspector ins={selIns} asset={assetsMap[selIns.asset]} change={(f, lo) => onInsertChange(selIns.id, f, lo)} onDelete={deleteSel} onMoveToPlayhead={() => moveInsertToPlayhead(selIns.id)} onDuplicate={() => dupInsert(selIns.id)} />;
-    else if (selection && selection.type === 'music' && edit.music) inspector = <MusicInspector music={edit.music} asset={musicAsset} onChange={onMusicChange} />;
+    else if (selection && selection.type === 'music' && edit.music) inspector = <MusicInspector music={edit.music} asset={musicAsset} total={seq.total} t={player.t} onChange={onMusicChange} />;
+    else if (selection && selection.type === 'cap' && groups[selection.id]) inspector = <CaptionInspector group={groups[selection.id]} total={seq.total} t={player.t} onChange={(f, lo) => onCaptionChange(selection.id, f, lo)} onDelete={deleteSel} />;
     else inspector = (
       <div className="flex flex-col h-full min-h-0">
         {(edit.cuts || []).length > 0 && (
@@ -565,7 +631,7 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
                   onPlayRender={(r) => { setActiveId(r.clipId); setView('rendered'); }} onDeleteRender={async (r) => { if (confirm('Hapus file hasil ekspor ini?')) await call('render:delete', id, r.id); }} onShow={show} />}
                 {leftTab === 'media' && <MediaPanel project={project} onImport={importAssets} onDelete={deleteAsset} onInsertScene={insertScene} onAddOverlay={addImageOverlay} />}
                 {leftTab === 'text' && <TextPanel onAdd={addText} />}
-                {leftTab === 'audio' && <AudioPanel project={project} music={edit.music} onImport={importAssets} onUse={useMusic} onDelete={deleteAsset} onMusicChange={onMusicChange} />}
+                {leftTab === 'audio' && <AudioPanel project={project} music={edit.music} total={seq.total} t={player.t} onImport={importAssets} onUse={useMusic} onDelete={deleteAsset} onMusicChange={onMusicChange} />}
                 {leftTab === 'watermark' && <WatermarkPanel wm={wm} setWm={setWm} pickImage={pickWm} clipShows={edit.watermark !== false} setClipShows={(v) => patchEdit({ watermark: v })} />}
                 {leftTab === 'adjust' && <AdjustPanel adjust={edit.adjust} onChange={(f, lo) => patchEdit((ed) => ({ ...ed, adjust: { ...(ed.adjust || {}), ...f } }), lo)} selectedCount={selected.length} onApplyAll={applyAdjustAll} />}
               </div>
@@ -589,7 +655,7 @@ export default function Project({ id, settings, saveSettings, setTheme, back, op
             {clip ? (
               <Timeline project={project} clip={clip} seq={seq} t={player.t} seek={player.seek} playing={player.playing} selection={selection} setSelection={setSelection}
                 overlays={edit.overlays} onOverlayChange={onOverlayChange} onTrim={(f, lo) => patch(f, lo)} onInsertChange={onInsertChange} assetsMap={assetsMap}
-                captionGroups={groups} music={musicInfo} onSplit={split} onDelete={deleteSel} onUndo={undo} onRedo={redo} canUndo={hist.current.undo.length > 0} canRedo={hist.current.redo.length > 0}
+                captionGroups={groups} onCaptionChange={onCaptionChange} music={musicInfo} onMusicChange={onMusicChange} onSplit={split} onDelete={deleteSel} onUndo={undo} onRedo={redo} canUndo={hist.current.undo.length > 0} canRedo={hist.current.redo.length > 0}
                 onAddText={() => { setLeftTab('text'); }} onOpenMedia={() => setLeftTab('media')} onOpenAudio={() => setLeftTab('audio')} />
             ) : <div className="h-full bg-panel border-t border-line" />}
           </div>

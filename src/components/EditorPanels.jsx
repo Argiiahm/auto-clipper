@@ -76,30 +76,54 @@ export function TextPanel({ onAdd }) {
 }
 
 /* ---------------- Audio ---------------- */
-export function MusicControls({ music, asset, onChange }) {
+export function MusicControls({ music, asset, total = 60, t = 0, onChange }) {
   if (!music) return null;
+  const mStart = music.start != null ? music.start : 0;
+  const mEnd = music.end != null ? music.end : total;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 p-2 rounded-md bg-panel2 border border-line">
         <div className="w-8 h-8 rounded bg-emerald-600 text-white flex items-center justify-center shrink-0"><Music size={14} /></div>
-        <div className="min-w-0 flex-1"><div className="text-[12px] font-medium text-fg truncate">{asset ? asset.name : 'Musik'}</div><div className="text-[11px] text-muted">{asset ? fmtTime(asset.duration) : ''} · diulang otomatis</div></div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[12px] font-medium text-fg truncate">{asset ? asset.name : 'Musik'}</div>
+          <div className="text-[11px] text-muted">{asset ? fmtTime(asset.duration) : ''} · diulang otomatis</div>
+        </div>
         <button className="icon-btn w-7 h-7" title="Hapus musik" onClick={() => onChange(null)}><X size={14} /></button>
       </div>
+
+      <div className="space-y-1.5 p-2 rounded-lg bg-panel border border-line">
+        <div className="flex items-center justify-between text-[11.5px] font-medium text-fg">
+          <span>Rentang di Timeline</span>
+          <span className="text-muted font-mono">{fmtTime(mStart)} – {fmtTime(mEnd)}</span>
+        </div>
+        <div className="text-[10.5px] text-muted">
+          Tarik balok musik atau ujung kiri/kanannya di timeline untuk mengatur waktu mulai & selesai.
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <Field label="Mulai"><NumInput value={mStart} min={0} max={mEnd - 0.5} step={0.5} onCommit={(v) => onChange({ start: v })} suffix="s" /></Field>
+          <Field label="Selesai"><NumInput value={mEnd} min={mStart + 0.5} max={total} step={0.5} onCommit={(v) => onChange({ end: v })} suffix="s" /></Field>
+        </div>
+        <div className="flex gap-1 pt-1">
+          <button className="btn-soft btn-xs text-[10.5px]" onClick={() => t < mEnd - 0.5 && onChange({ start: +t.toFixed(2) })}>Mulai di playhead</button>
+          <button className="btn-soft btn-xs text-[10.5px]" onClick={() => t > mStart + 0.5 && onChange({ end: +t.toFixed(2) })}>Selesai di playhead</button>
+        </div>
+      </div>
+
       <SliderRow label="Volume musik" value={Math.round((music.volume ?? 0.5) * 100)} min={0} max={200} onChange={(v) => onChange({ volume: v / 100 }, true)} onCommit={(v) => onChange({ volume: v / 100 })} fmt={(v) => `${v}%`} />
       <SliderRow label="Volume suara asli" value={Math.round((music.sourceVolume ?? 1) * 100)} min={0} max={200} onChange={(v) => onChange({ sourceVolume: v / 100 }, true)} onCommit={(v) => onChange({ sourceVolume: v / 100 })} fmt={(v) => `${v}%`} />
-      <Field label="Mulai musik dari detik ke-"><NumInput value={music.offset || 0} min={0} step={1} digits={1} onCommit={(v) => onChange({ offset: v })} suffix="dtk" /></Field>
+      <Field label="Mulai audio dari detik ke-"><NumInput value={music.offset || 0} min={0} step={1} digits={1} onCommit={(v) => onChange({ offset: v })} suffix="dtk" /></Field>
     </div>
   );
 }
 
-export function AudioPanel({ project, music, onImport, onUse, onDelete, onMusicChange }) {
+export function AudioPanel({ project, music, total = 60, t = 0, onImport, onUse, onDelete, onMusicChange }) {
   const auds = (project.assets || []).filter((a) => a.kind === 'audio');
   const cur = music && (project.assets || []).find((a) => a.id === music.asset);
   return (
     <div className="flex flex-col h-full min-h-0">
       <Head title="Audio"><button className="btn-primary btn-sm" onClick={() => onImport('audio')}><Upload size={13} />Impor</button></Head>
       <div className="flex-1 overflow-y-auto">
-        {music && <Section title="Musik latar klip ini"><MusicControls music={music} asset={cur} onChange={onMusicChange} /></Section>}
+        {music && <Section title="Musik latar klip ini"><MusicControls music={music} asset={cur} total={total} t={t} onChange={onMusicChange} /></Section>}
         <div className="p-3 space-y-1.5">
           <div className="text-[11px] text-muted mb-1">File audio proyek</div>
           {!auds.length && <Empty icon={<Music size={20} />}>Impor mp3 / wav / m4a untuk musik latar.</Empty>}

@@ -180,11 +180,19 @@ async function renderClipEdited({ projectDir, srcRel, video, clip, webcam, assTe
   // audio
   const sv = music && music.rel ? Math.max(0, Number(music.sourceVolume ?? 1)) : 1;
   if (music && music.rel) {
+    const mStart = Math.max(0, Number(music.start) || 0);
+    const mEnd = Math.min(dur, Math.max(mStart + 0.1, Number(music.end != null ? music.end : dur)));
+    const mDur = Math.max(0.1, mEnd - mStart);
     const k = addInput(['-stream_loop', '-1', '-ss', Math.max(0, Number(music.offset) || 0).toFixed(3), '-i', music.rel.replace(/\\/g, '/')]);
     const mv = Math.max(0, Number(music.volume ?? 0.5));
-    const fadeSt = Math.max(0, dur - 1.2).toFixed(3);
+    const fadeSt = Math.max(0, mDur - 1.2).toFixed(3);
     g.push(`[ca0]volume=${sv.toFixed(3)}[cs]`);
-    g.push(`[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=duration=${dur.toFixed(3)},asetpts=PTS-STARTPTS,volume=${mv.toFixed(3)},afade=t=out:st=${fadeSt}:d=1.2[mus]`);
+    const delayMs = Math.round(mStart * 1000);
+    if (delayMs > 0) {
+      g.push(`[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=duration=${mDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=${mv.toFixed(3)},afade=t=out:st=${fadeSt}:d=1.2,adelay=${delayMs}|${delayMs}[mus]`);
+    } else {
+      g.push(`[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=duration=${mDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=${mv.toFixed(3)},afade=t=out:st=${fadeSt}:d=1.2[mus]`);
+    }
     g.push(`[cs][mus]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[ao]`);
   } else g.push(`[ca0]anull[ao]`);
 
